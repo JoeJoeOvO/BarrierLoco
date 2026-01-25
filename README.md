@@ -70,3 +70,42 @@ cd deploy
 - Python 3.10+
 - PyTorch 2.x
 - CUDA 12.x
+
+## 开发规范
+
+### Git 工作流
+
+**禁止直接 push 到 main 分支**，请遵循以下流程：
+
+```bash
+# 1. 创建功能分支
+git checkout -b feature/your-feature-name
+
+# 2. 开发并提交
+git add .
+git commit -m "feat: add your feature"
+
+# 3. 推送分支
+git push origin feature/your-feature-name
+
+# 4. 创建 Pull Request 合并到 main
+```
+
+### 分支命名规范
+
+| 前缀 | 用途 |
+|------|------|
+| `feature/` | 新功能 |
+| `fix/` | Bug 修复 |
+| `refactor/` | 代码重构 |
+| `docs/` | 文档更新 |
+
+### Pre-commit
+
+提交前请运行 pre-commit：
+
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files
+```
