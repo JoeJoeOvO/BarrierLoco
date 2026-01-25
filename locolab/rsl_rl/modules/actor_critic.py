@@ -5,13 +5,13 @@
 
 from __future__ import annotations
 
-import torch
-import torch.nn as nn
-from tensordict import TensorDict
-from torch.distributions import Normal
 from typing import Any, NoReturn
 
+import torch
+import torch.nn as nn
 from rsl_rl.networks import MLP, EmpiricalNormalization
+from tensordict import TensorDict
+from torch.distributions import Normal
 
 
 class ActorCritic(nn.Module):

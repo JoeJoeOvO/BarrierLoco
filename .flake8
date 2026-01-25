@@ -1,0 +1,9 @@
+[flake8]
+max-line-length = 120
+extend-ignore = E203, W503, E402, F401, F541, R504, R505, R506, R503, SIM102, SIM105
+exclude =
+    .git,
+    __pycache__,
+    build,
+    dist,
+    *.egg-info

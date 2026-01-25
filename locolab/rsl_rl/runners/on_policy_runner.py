@@ -7,10 +7,9 @@ from __future__ import annotations
 
 import os
 import time
-import torch
 import warnings
-from tensordict import TensorDict
 
+import torch
 from rsl_rl.algorithms import PPO
 from rsl_rl.env import VecEnv
 from rsl_rl.modules import (
@@ -23,6 +22,7 @@ from rsl_rl.modules import (
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import resolve_callable, resolve_obs_groups
 from rsl_rl.utils.logger import Logger
+from tensordict import TensorDict
 
 
 class OnPolicyRunner:

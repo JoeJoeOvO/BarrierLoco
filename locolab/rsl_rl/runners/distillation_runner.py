@@ -5,13 +5,12 @@
 
 from __future__ import annotations
 
-from tensordict import TensorDict
-
 from rsl_rl.algorithms import Distillation
 from rsl_rl.modules import StudentTeacher, StudentTeacherRecurrent
 from rsl_rl.runners import OnPolicyRunner
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import resolve_callable
+from tensordict import TensorDict
 
 
 class DistillationRunner(OnPolicyRunner):

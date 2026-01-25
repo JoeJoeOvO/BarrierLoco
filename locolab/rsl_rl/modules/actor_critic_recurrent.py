@@ -5,14 +5,14 @@
 
 from __future__ import annotations
 
-import torch
-import torch.nn as nn
 import warnings
-from tensordict import TensorDict
-from torch.distributions import Normal
 from typing import Any, NoReturn
 
+import torch
+import torch.nn as nn
 from rsl_rl.networks import MLP, EmpiricalNormalization, HiddenState, Memory
+from tensordict import TensorDict
+from torch.distributions import Normal
 
 
 class ActorCriticRecurrent(nn.Module):

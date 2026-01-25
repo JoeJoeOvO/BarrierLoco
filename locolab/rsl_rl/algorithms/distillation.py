@@ -7,11 +7,10 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
-from tensordict import TensorDict
-
 from rsl_rl.modules import StudentTeacher, StudentTeacherRecurrent
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import resolve_optimizer
+from tensordict import TensorDict
 
 
 class Distillation:

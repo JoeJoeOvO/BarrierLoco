@@ -8,9 +8,10 @@
 """Launch Isaac Sim Simulator first."""
 
 
-import gymnasium as gym
 import pathlib
 import sys
+
+import gymnasium as gym
 
 sys.path.insert(0, f"{pathlib.Path(__file__).parent.parent}")
 from list_envs import import_packages  # noqa: F401
@@ -25,7 +26,6 @@ for task_spec in gym.registry.values():
 import argparse
 
 import argcomplete
-
 from isaaclab.app import AppLauncher
 
 # local imports
@@ -71,6 +71,7 @@ from packaging import version
 RSL_RL_VERSION = "2.3.1"
 try:
     import rsl_rl
+
     installed_version = getattr(rsl_rl, "__version__", "3.3.0")  # Default to local version
 except ImportError:
     installed_version = "0.0.0"
@@ -89,16 +90,14 @@ if args_cli.distributed and version.parse(installed_version) < version.parse(RSL
 
 """Rest everything follows."""
 
-import gymnasium as gym
 import inspect
 import os
 import shutil
-import torch
 from datetime import datetime
 
-from rsl_rl.runners import OnPolicyRunner  # TODO: Consider printing the experiment name in the terminal.
-
+import gymnasium as gym
 import isaaclab_tasks  # noqa: F401
+import torch
 from isaaclab.envs import (
     DirectMARLEnv,
     DirectMARLEnvCfg,
@@ -111,6 +110,7 @@ from isaaclab.utils.io import dump_yaml
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
+from rsl_rl.runners import OnPolicyRunner  # TODO: Consider printing the experiment name in the terminal.
 
 import locolab.source.locomotion.tasks  # noqa: F401
 from locolab.source.locomotion.utils.export_deploy_cfg import export_deploy_cfg

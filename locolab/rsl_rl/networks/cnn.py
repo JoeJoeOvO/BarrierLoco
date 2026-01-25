@@ -6,10 +6,10 @@
 from __future__ import annotations
 
 import math
-import torch
-from torch import nn as nn
 
+import torch
 from rsl_rl.utils import get_param, resolve_nn_activation
+from torch import nn as nn
 
 
 class CNN(nn.Sequential):

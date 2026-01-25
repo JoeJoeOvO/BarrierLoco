@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
-import torch
 import warnings
-from tensordict import TensorDict
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import rsl_rl
+import torch
+from tensordict import TensorDict
 
 
 def get_param(param: Any, idx: int) -> Any:
@@ -231,7 +232,7 @@ def resolve_callable(callable_or_name: type | Callable | str) -> Callable:
     # Raise error if no approach worked
     raise ValueError(
         f"Could not resolve '{callable_or_name}'. Use qualified name like 'module.path:ClassName' "
-        f"or pass the class directly."
+        "or pass the class directly."
     )
 
 

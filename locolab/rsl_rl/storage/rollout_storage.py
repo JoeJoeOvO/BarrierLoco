@@ -5,12 +5,12 @@
 
 from __future__ import annotations
 
-import torch
 from collections.abc import Generator
-from tensordict import TensorDict
 
+import torch
 from rsl_rl.networks import HiddenState
 from rsl_rl.utils import split_and_pad_trajectories
+from tensordict import TensorDict
 
 
 class RolloutStorage:

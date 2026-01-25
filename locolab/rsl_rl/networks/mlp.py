@@ -5,10 +5,10 @@
 
 from __future__ import annotations
 
-import torch
-import torch.nn as nn
 from functools import reduce
 
+import torch
+import torch.nn as nn
 from rsl_rl.utils import get_param, resolve_nn_activation
 
 

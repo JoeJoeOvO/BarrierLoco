@@ -5,15 +5,15 @@
 
 from __future__ import annotations
 
-import git
 import os
 import pathlib
 import statistics
 import time
-import torch
 from collections import deque
 
+import git
 import rsl_rl
+import torch
 
 
 class Logger:
