@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and outputs
+logs/
+outputs/
+videos/
+wandb/
+.neptune/
+runs/
+recordings/
+
+# Isaac Sim
+*.usd
+*.usda
+*.usdc
+*.usdz
+*.dmp
+.thumbs/
+
+# Models and data
+*.pt
+*.onnx
+*.npz
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.xml
+
+# mypy
+.mypy_cache/
