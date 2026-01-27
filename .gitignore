@@ -29,7 +29,6 @@ runs/
 recordings/
 
 # Isaac Sim
-*.usd
 *.usda
 *.usdc
 *.usdz
@@ -49,7 +48,6 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
-*.xml
 
 # mypy
 .mypy_cache/

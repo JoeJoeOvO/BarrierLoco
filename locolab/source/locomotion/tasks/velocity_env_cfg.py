@@ -256,6 +256,13 @@ class LocomotionObservationsCfg:
         joint_vel = ObsTerm(func=mdp.joint_vel, scale=0.05, clip=(-100, 100))
         last_action = ObsTerm(func=mdp.last_action, clip=(-100, 100))
         joint_effort = ObsTerm(func=mdp.joint_effort, scale=0.01, clip=(-100, 100))
+        joint_acc = ObsTerm(func=mdp.joint_acc, scale=0.01, clip=(-100, 100))
+        feet_contact_force = ObsTerm(
+            func=mdp.body_contact_force,
+            scale=0.01,
+            clip=(-100, 100),
+            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
+        )
         height_scanner = ObsTerm(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
@@ -278,25 +285,25 @@ class LocomotionRewardsCfg:
     # ==========================================================================
 
     # -- survival
-    stay_alive = RewTerm(func=mdp.stay_alive_startup, weight=5.0)
+    stay_alive = RewTerm(func=mdp.stay_alive_startup, weight=3.0)  # 从5.0降低
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-5.0)
 
-    # -- velocity tracking
+    # -- velocity tracking - 提高权重，强化任务目标
     track_lin_vel_xy = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=5.0,
+        weight=3.0,  # 从1.5提高到3.0
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     track_ang_vel_z = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
-        weight=2.0,
+        weight=1.5,  # 从0.75提高到1.5
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
 
     # -- base stability
-    base_lin_vel_z = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    base_lin_vel_z = RewTerm(func=mdp.lin_vel_z_l2, weight=-1.0)
     base_ang_vel_xy = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-2.5)
+    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-0.5)
 
 
 @configclass
@@ -308,7 +315,7 @@ class LocomotionTerminationsCfg:
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
     )
-    bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": 0.8})
+    bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": 1.0})  # 从0.8放宽到1.0（约57度）
 
 
 @configclass

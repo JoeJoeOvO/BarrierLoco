@@ -23,9 +23,8 @@ locolab/
 ├── source/                     # 核心源码
 │   └── locomotion/
 │       ├── assets/             # 机器人资产配置
-│       │   ├── robot.py        # 机器人配置
-│       │   ├── Go2W/           # Go2W 轮足机器人 USD 模型
-│       │   └── unitree_actuators.py
+│       │   ├── robot.py        # 机器人配置 (Go2W)
+│       │   └── Go2W/           # Go2W 轮足机器人 USD 模型
 │       ├── mdp/                # MDP 组件
 │       │   ├── observations.py # 观测函数
 │       │   ├── rewards.py      # 奖励函数
@@ -33,7 +32,10 @@ locolab/
 │       │   ├── command/        # 命令生成
 │       │   └── actions/        # 动作空间
 │       ├── tasks/              # 任务定义
-│       │   ├── velocity_env_cfg.py  # 速度控制环境配置
+│       │   ├── velocity_env_cfg.py  # 基础速度控制环境
+│       │   ├── Go2W/           # Go2W 专用配置
+│       │   │   ├── flat_env_cfg.py   # 平地环境
+│       │   │   └── rough_env_cfg.py  # 复杂地形环境
 │       │   └── agents/         # RL 算法配置
 │       └── utils/              # 工具函数
 └── setup.py                    # 安装脚本
@@ -41,7 +43,7 @@ locolab/
 
 ## 环境要求
 
-- Isaac Sim 5.x / Isaac Lab
+- Isaac Sim 4.5+ / Isaac Lab 2.0+
 - Python 3.10+
 - PyTorch 2.x
 - CUDA 12.x
@@ -49,8 +51,6 @@ locolab/
 ## 安装
 
 ```bash
-
-# 安装包
 cd locolab
 pip install -e .
 ```
@@ -66,24 +66,27 @@ python scripts/list_envs.py
 ### 训练
 
 ```bash
-# 基本训练
-python scripts/locomotion/train.py --task=OmniBot-Go2W-Velocity --num_envs=4096
+# Go2W 平地训练（推荐初始训练）
+python scripts/locomotion/train.py --task=OmniBot-Go2W-Flat-v0 --num_envs=4096
+
+# Go2W 复杂地形训练
+python scripts/locomotion/train.py --task=OmniBot-Go2W-Rough-v0 --num_envs=4096
 
 # 从检查点恢复训练
-python scripts/locomotion/train.py --task=OmniBot-Go2W-Velocity --num_envs=4096 --resume
+python scripts/locomotion/train.py --task=OmniBot-Go2W-Flat-v0 --num_envs=4096 --resume
 ```
 
 ### 推理/测试
 
 ```bash
 # 加载最新检查点
-python scripts/locomotion/play.py --task=OmniBot-Go2W-Velocity --num_envs=16
+python scripts/locomotion/play.py --task=OmniBot-Go2W-Flat-v0 --num_envs=16
 
 # 指定检查点
-python scripts/locomotion/play.py --task=OmniBot-Go2W-Velocity --checkpoint=logs/rsl_rl/xxx/model_1000.pt
+python scripts/locomotion/play.py --task=OmniBot-Go2W-Flat-v0 --checkpoint=logs/rsl_rl/xxx/model_1000.pt
 
 # 录制视频
-python scripts/locomotion/play.py --task=OmniBot-Go2W-Velocity --video --video_length=500
+python scripts/locomotion/play.py --task=OmniBot-Go2W-Flat-v0 --video --video_length=500
 ```
 
 ### 常用参数
@@ -100,16 +103,45 @@ python scripts/locomotion/play.py --task=OmniBot-Go2W-Velocity --video --video_l
 
 ## 可用任务
 
-| 任务名称 | 说明 |
-|----------|------|
-| `OmniBot-Go2W-Velocity` | Go2W 轮足机器人速度控制 |
+| 任务 ID | 说明 |
+|---------|------|
+| `OmniBot-Go2W-Flat-v0` | Go2W 轮足机器人平地速度控制 |
+| `OmniBot-Go2W-Rough-v0` | Go2W 轮足机器人复杂地形速度控制 |
+| `OmniBot-Go2W-Velocity` | 旧版别名，等同于 Flat-v0 |
+
+## Go2W 轮足机器人
+
+Go2W 是基于 Unitree Go2 改装的轮足机器人：
+
+- **腿部关节**: 12个（每条腿 hip/thigh/calf），位置控制
+- **轮子关节**: 4个（foot），速度控制
+- **动作空间**: 混合控制（腿部位置 + 轮子速度）
+
+### Reward 设计
+
+任务奖励（正向激励）：
+- `track_lin_vel_xy`: 线速度跟踪 (weight=3.0)
+- `track_ang_vel_z`: 角速度跟踪 (weight=1.5)
+- `stay_alive`: 存活奖励 (weight=3.0)
+
+正则化惩罚（负向约束）：
+- `dof_acc_l2`: 关节加速度平滑 (weight=-5e-8)
+- `dof_pos_limits`: 关节限位惩罚 (weight=-0.5)
+- `action_rate_wheels`: 轮子动作变化率 (weight=-0.001)
+- `undesired_contacts`: 非期望接触惩罚 (weight=-10.0)
+
+### Termination 条件
+
+- `time_out`: 超时（20秒）
+- `base_contact`: 底座接触地面
+- `bad_orientation`: 姿态角超过 1.0 rad（约57度）
 
 ## 训练日志
 
 训练日志保存在 `logs/rsl_rl/<experiment_name>/` 目录下：
 
 ```
-logs/rsl_rl/omnibot_go2w_velocity/
+logs/rsl_rl/omnibot_go2w_flat/
 └── 2024-01-01_12-00-00/
     ├── model_*.pt          # 模型检查点
     ├── params/
@@ -125,3 +157,12 @@ logs/rsl_rl/omnibot_go2w_velocity/
 ```bash
 tensorboard --logdir=logs/rsl_rl
 ```
+
+## 训练监控指标
+
+| 指标 | 期望趋势 | 说明 |
+|------|----------|------|
+| `Train/mean_episode_length` | ↑ 稳定在 500+ | Episode 平均长度 |
+| `Episode_Reward/track_lin_vel_xy` | ↑ | 速度跟踪奖励 |
+| `Episode_Termination/bad_orientation` | ↓ < 0.5 | 姿态终止率 |
+| `Episode_Termination/time_out` | ↑ | 超时终止率（正常结束） |

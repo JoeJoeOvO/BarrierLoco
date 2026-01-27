@@ -24,7 +24,6 @@ runs/
 recordings/
 
 # Isaac Sim
-*.usd
 *.usda
 *.usdc
 *.usdz

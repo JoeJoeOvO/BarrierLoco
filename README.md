@@ -17,9 +17,10 @@ OmniBot/
 
 基于 Isaac Lab 的机器人运动控制训练框架，使用 PPO 算法训练轮足机器人的运动策略。
 
-- 支持 Go2W 轮足机器人
-- 速度跟踪任务
+- 支持 Go2W 轮足机器人（腿部位置控制 + 轮子速度控制）
+- 平地/复杂地形速度跟踪任务
 - RSL-RL 强化学习库
+- 课程学习支持
 
 详见 [locolab/README.md](locolab/README.md)
 
@@ -46,7 +47,12 @@ Sim2Real 实机部署模块，将训练好的策略部署到真实机器人。
 ```bash
 cd locolab
 pip install -e .
-python scripts/locomotion/train.py --task=OmniBot-Go2W-Velocity --num_envs=4096
+
+# Go2W 平地训练
+python scripts/locomotion/train.py --task=OmniBot-Go2W-Flat-v0 --num_envs=4096
+
+# Go2W 复杂地形训练
+python scripts/locomotion/train.py --task=OmniBot-Go2W-Rough-v0 --num_envs=4096
 ```
 
 ### 2. Sim2Sim 验证
@@ -65,7 +71,7 @@ cd deploy
 
 ## 环境要求
 
-- Isaac Sim 5.x / Isaac Lab
+- Isaac Sim 4.5+ / Isaac Lab 2.0+
 - MuJoCo 3.x
 - Python 3.10+
 - PyTorch 2.x

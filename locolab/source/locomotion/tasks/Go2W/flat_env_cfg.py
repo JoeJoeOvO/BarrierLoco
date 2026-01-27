@@ -67,7 +67,7 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
     # -- base stability (additional)
     base_height_l2 = RewTerm(
         func=mdp.base_height_l2,
-        weight=-1.0,
+        weight=-1.0,  # 从-2.0降低，减少高度惩罚
         params={
             "target_height": 0.45,
             "sensor_cfg": SceneEntityCfg("height_scanner"),
@@ -77,7 +77,7 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
     # -- joint regularization
     joint_pos_deviation = RewTerm(
         func=mdp.joint_position_penalty,
-        weight=-0.2,
+        weight=-0.5,  # 从-1.0降低
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
             "stand_still_scale": 2.0,
@@ -87,58 +87,58 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
     )
     dof_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2,
-        weight=-2.5e-7,
+        weight=-5e-8,  # 从-2.5e-7降低5倍，主要问题项
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2,
-        weight=-2e-5,
+        weight=-1e-5,  # 从-2e-5降低
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
     dof_vel_l2 = RewTerm(
         func=mdp.joint_vel_l2,
-        weight=-2e-4,
+        weight=-1e-4,  # 从-2e-4降低
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
     dof_power_l1 = RewTerm(
         func=mdp.dof_power_l1,
-        weight=-2e-5,
+        weight=-1e-5,  # 从-2e-5降低
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
-        weight=-2.0,
+        weight=-0.5,  # 从-2.0降低4倍
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
 
     # -- action regularization (legs)
     action_rate_legs = RewTerm(
         func=mdp.action_rate_l2_mask,
-        weight=-0.05,
+        weight=-0.01,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
     action_smoothness_legs = RewTerm(
         func=mdp.action_smoothness_penalty,
-        weight=-0.05,
+        weight=-0.01,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
 
-    # -- action regularization (wheels)
+    # -- action regularization (wheels) - 轮子需要快速响应，大幅降低惩罚
     action_rate_wheels = RewTerm(
         func=mdp.action_rate_l2_mask,
-        weight=-0.01,
+        weight=-0.001,  # 从-0.01降低10倍
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_foot_.*"])},
     )
     action_smoothness_wheels = RewTerm(
         func=mdp.action_smoothness_penalty,
-        weight=-0.01,
+        weight=-0.001,  # 从-0.01降低10倍
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_foot_.*"])},
     )
 
     # -- contact regularization
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-1.0,
+        weight=-10.0,
         params={
             "threshold": 0.1,
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_hip", ".*_thigh", ".*_calf", "base"]),
@@ -160,12 +160,13 @@ class Go2WCurriculumCfg(LocomotionCurriculumCfg):
         params={
             "command_name": "base_velocity",
             "reward_term_name": "track_lin_vel_xy",
-            "reward_threshold": 0.9,  
-            "step_size": 0.1,         
-            "max_lin_vel_x": (-2.5, 2.5), 
+            "reward_threshold": 0.9,
+            "step_size": 0.1,
+            "max_lin_vel_x": (-2.5, 2.5),
             "max_lin_vel_y": (-0.3, 0.3),
         },
     )
+
     def __post_init__(self):
         super().__post_init__()
         self.terrain_levels = None
