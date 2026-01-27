@@ -197,12 +197,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
-    export_deploy_cfg(env.unwrapped, log_dir)
-    # copy the environment configuration file to the log directory
-    shutil.copy(
-        inspect.getfile(env_cfg.__class__),
-        os.path.join(log_dir, "params", os.path.basename(inspect.getfile(env_cfg.__class__))),
-    )
 
     # run training
     runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)

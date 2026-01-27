@@ -12,36 +12,66 @@ except ImportError:
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
+from isaaclab.utils import math as math_utils
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
+# ==============================================================================
+# TASK REWARDS
+# Rewards directly tied to achieving locomotion objectives
+# ==============================================================================
+
 """
-Joint penalties.
+Survival rewards.
 """
 
 
-def energy(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
-    """Penalize the energy used by the robot's joints."""
-    asset: Articulation = env.scene[asset_cfg.name]
+def stay_alive_startup(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Reward for staying alive during the startup phase."""
+    mean_episode_length = env.episode_length_buf.float().mean()
+    max_episode_length = env.max_episode_length
+    ratio = ((max_episode_length - mean_episode_length * 2) / max_episode_length).clip(0, 1)
+    return torch.ones(env.num_envs, device=env.device) * ratio
 
-    qvel = asset.data.joint_vel[:, asset_cfg.joint_ids]
-    qfrc = asset.data.applied_torque[:, asset_cfg.joint_ids]
-    return torch.sum(torch.abs(qvel) * torch.abs(qfrc), dim=-1)
+
+"""
+Velocity tracking rewards.
+"""
 
 
-def stand_still(
-    env: ManagerBasedRLEnv, command_name: str = "base_velocity", asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+def track_lin_vel_xy_yaw_frame_exp(
+    env: ManagerBasedRLEnv,
+    std: float,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    asset: Articulation = env.scene[asset_cfg.name]
+    """Reward tracking of linear velocity commands (xy) in the gravity aligned robot frame using exponential kernel."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # Transform velocity to yaw-aligned frame (gravity aligned, only yaw rotation)
+    vel_yaw = math_utils.quat_apply_inverse(
+        math_utils.yaw_quat(asset.data.root_quat_w), asset.data.root_lin_vel_w[:, :3]
+    )
+    lin_vel_error = torch.sum(
+        torch.square(env.command_manager.get_command(command_name)[:, :2] - vel_yaw[:, :2]), dim=1
+    )
+    return torch.exp(-lin_vel_error / std**2)
 
-    reward = torch.sum(torch.abs(asset.data.joint_pos - asset.data.default_joint_pos), dim=1)
-    cmd_norm = torch.norm(env.command_manager.get_command(command_name), dim=1)
-    return reward * (cmd_norm < 0.1)
+
+def track_ang_vel_z_world_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    std: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward tracking of angular velocity commands (yaw) in world frame using exponential kernel."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_w[:, 2])
+    return torch.exp(-ang_vel_error / std**2)
 
 
 """
-Robot.
+Base stability rewards.
 """
 
 
@@ -66,20 +96,105 @@ def upward(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("r
     return reward
 
 
-def joint_position_penalty(
-    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, stand_still_scale: float, velocity_threshold: float
+def base_height_l2(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Penalize joint position error from default on the articulation."""
-    # extract the used quantities (to enable type-hinting)
+    """Penalize base height deviation from target using L2 squared kernel.
+
+    Uses height scanner to measure ground-relative height.
+
+    Args:
+        env: The environment object.
+        target_height: The desired base height above ground.
+        sensor_cfg: Configuration for height scanner sensor.
+        asset_cfg: Configuration for the robot asset.
+    """
+    from isaaclab.sensors import RayCaster
+
+    asset: RigidObject = env.scene[asset_cfg.name]
+    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
+
+    # Compute height above ground: root_z - ray_hit_z
+    height = asset.data.root_pos_w[:, 2].unsqueeze(1) - sensor.data.ray_hits_w[:, :, 2]
+    # ray_hits_w can be inf when no hit, replace with target_height to avoid NaN
+    height = torch.nan_to_num(height, nan=target_height, posinf=target_height, neginf=target_height)
+
+    return torch.square(height.mean(dim=1) - target_height)
+
+
+# ==============================================================================
+# REGULARIZATION REWARDS
+# Constraints for smooth and efficient behavior
+# ==============================================================================
+
+"""
+Joint regularization.
+"""
+
+
+def energy(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize the energy used by the robot's joints."""
     asset: Articulation = env.scene[asset_cfg.name]
-    cmd = torch.linalg.norm(env.command_manager.get_command("base_velocity"), dim=1)
+
+    qvel = asset.data.joint_vel[:, asset_cfg.joint_ids]
+    qfrc = asset.data.applied_torque[:, asset_cfg.joint_ids]
+    return torch.sum(torch.abs(qvel) * torch.abs(qfrc), dim=-1)
+
+
+def stand_still(
+    env: ManagerBasedRLEnv, command_name: str = "base_velocity", asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Penalize joint deviation from default when command is near zero."""
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    reward = torch.sum(torch.abs(asset.data.joint_pos - asset.data.default_joint_pos), dim=1)
+    cmd_norm = torch.norm(env.command_manager.get_command(command_name), dim=1)
+    return reward * (cmd_norm < 0.1)
+
+
+def joint_position_penalty(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    stand_still_scale: float,
+    velocity_threshold: float,
+    ang_vel_threshold: float = 0.1,
+) -> torch.Tensor:
+    """Penalize joint position error from default on the articulation.
+
+    Args:
+        env: The environment instance.
+        asset_cfg: Configuration for the robot asset with joint_ids to penalize.
+        stand_still_scale: Scale factor for penalty when standing still.
+        velocity_threshold: Linear velocity threshold below which standing still scale applies.
+        ang_vel_threshold: Angular velocity threshold. When |ang_vel_z| > threshold, penalty is reduced.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    cmd = env.command_manager.get_command("base_velocity")
+    cmd_lin = torch.linalg.norm(cmd[:, :2], dim=1)
+    cmd_ang = torch.abs(cmd[:, 2])  # angular velocity command
     body_vel = torch.linalg.norm(asset.data.root_lin_vel_b[:, :2], dim=1)
-    reward = torch.linalg.norm((asset.data.joint_pos - asset.data.default_joint_pos), dim=1)
-    return torch.where(torch.logical_or(cmd > 0.0, body_vel > velocity_threshold), reward, stand_still_scale * reward)
+
+    # Compute joint position error
+    joint_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
+    default_pos = asset.data.default_joint_pos[:, asset_cfg.joint_ids]
+    reward = torch.linalg.norm(joint_pos - default_pos, dim=1)
+
+    # Conditions:
+    # - If turning (ang_vel > threshold): normal penalty (not scaled)
+    # - If moving (lin_vel > 0 or body_vel > threshold): normal penalty
+    # - If standing still (no lin_vel, no ang_vel, no body motion): scaled penalty
+    is_turning = cmd_ang > ang_vel_threshold
+    is_moving = torch.logical_or(cmd_lin > 0.0, body_vel > velocity_threshold)
+    is_active = torch.logical_or(is_turning, is_moving)
+
+    return torch.where(is_active, reward, stand_still_scale * reward)
 
 
 """
-Feet rewards.
+Feet regularization.
 """
 
 
@@ -169,7 +284,7 @@ def air_time_variance_penalty(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg
 
 
 """
-Feet Gait rewards.
+Gait regularization.
 """
 
 
@@ -203,7 +318,7 @@ def feet_gait(
 
 
 """
-Other rewards.
+Symmetry regularization.
 """
 
 
@@ -225,3 +340,164 @@ def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joint
         )
     reward *= 1 / len(mirror_joints) if len(mirror_joints) > 0 else 0
     return reward
+
+
+"""
+DOF limits and power regularization.
+"""
+
+
+def dof_power_l1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize joint power consumption using L1 kernel (|torque * velocity|)."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    power = torch.abs(asset.data.applied_torque[:, asset_cfg.joint_ids]) * torch.abs(
+        asset.data.joint_vel[:, asset_cfg.joint_ids]
+    )
+    return torch.sum(power, dim=-1)
+
+
+def joint_pos_limits_torque_regularization(
+    env: ManagerBasedRLEnv,
+    pos_limit_threshold: float,
+    torque_threshold: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize joints that apply torque while near position limits.
+
+    This prevents the robot from pushing against joint limits.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    joint_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
+    joint_torque = asset.data.applied_torque[:, asset_cfg.joint_ids]
+
+    # Get joint limits
+    soft_lower = asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 0]
+    soft_upper = asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 1]
+
+    # Check if near limits
+    near_lower = joint_pos < (soft_lower + pos_limit_threshold)
+    near_upper = joint_pos > (soft_upper - pos_limit_threshold)
+
+    # Penalize torque in wrong direction near limits
+    # Near lower limit: penalize negative torque (pushing into limit)
+    # Near upper limit: penalize positive torque (pushing into limit)
+    torque_violation = torch.zeros_like(joint_pos)
+    torque_violation = torch.where(
+        near_lower & (joint_torque < -torque_threshold), torch.abs(joint_torque), torque_violation
+    )
+    torque_violation = torch.where(
+        near_upper & (joint_torque > torque_threshold), torch.abs(joint_torque), torque_violation
+    )
+
+    return torch.sum(torque_violation, dim=-1)
+
+
+def joint_pos_limits_vel_regularization(
+    env: ManagerBasedRLEnv,
+    pos_limit_threshold: float,
+    vel_threshold: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize joints moving towards limits at high velocity.
+
+    This prevents the robot from slamming into joint limits.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    joint_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
+    joint_vel = asset.data.joint_vel[:, asset_cfg.joint_ids]
+
+    # Get joint limits
+    soft_lower = asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 0]
+    soft_upper = asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 1]
+
+    # Check if near limits
+    near_lower = joint_pos < (soft_lower + pos_limit_threshold)
+    near_upper = joint_pos > (soft_upper - pos_limit_threshold)
+
+    # Penalize velocity towards limits
+    # Near lower limit: penalize negative velocity (moving towards limit)
+    # Near upper limit: penalize positive velocity (moving towards limit)
+    vel_violation = torch.zeros_like(joint_pos)
+    vel_violation = torch.where(near_lower & (joint_vel < -vel_threshold), torch.abs(joint_vel), vel_violation)
+    vel_violation = torch.where(near_upper & (joint_vel > vel_threshold), torch.abs(joint_vel), vel_violation)
+
+    return torch.sum(vel_violation, dim=-1)
+
+
+def joint_deviation_l1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize deviation from default joint positions using L1 kernel.
+
+    Uses body_names to identify which joints to penalize based on connected links.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    # Use joint_ids if available, otherwise use all joints
+    if asset_cfg.joint_ids is not None:
+        joint_ids = asset_cfg.joint_ids
+    else:
+        joint_ids = slice(None)
+
+    deviation = torch.abs(asset.data.joint_pos[:, joint_ids] - asset.data.default_joint_pos[:, joint_ids])
+    return torch.sum(deviation, dim=-1)
+
+
+"""
+Action regularization.
+"""
+
+
+def action_rate_l2_mask(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize the rate of change of specific actions using L2 squared kernel.
+
+    Args:
+        env: The environment object.
+        asset_cfg: Configuration for the asset with joint_names to specify which actions to penalize.
+    """
+    action_diff = (
+        env.action_manager.action[:, asset_cfg.joint_ids] - env.action_manager.prev_action[:, asset_cfg.joint_ids]
+    )
+    return torch.sum(torch.square(action_diff), dim=1)
+
+
+def action_smoothness_penalty(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Penalize action jerk using second-order finite difference.
+
+    Computes the second derivative of actions: current - 2*prev + prev_prev.
+    Returns zero penalty for the first 3 steps (startup phase masking).
+
+    Args:
+        env: The environment object.
+        asset_cfg: Configuration for the asset with joint_names to specify which actions to penalize.
+    """
+    # Get full action tensors
+    current_action = env.action_manager.action
+    prev_action = env.action_manager.prev_action
+
+    # Initialize prev_prev_action on first call (store full action, not sliced)
+    if not hasattr(env, "_action_smoothness_prev_prev_action"):
+        env._action_smoothness_prev_prev_action = prev_action.clone()
+        return torch.zeros(env.num_envs, device=env.device)
+
+    # Check for shape mismatch (can happen after reset) and reinitialize if needed
+    if env._action_smoothness_prev_prev_action.shape != prev_action.shape:
+        env._action_smoothness_prev_prev_action = prev_action.clone()
+        return torch.zeros(env.num_envs, device=env.device)
+
+    # Compute second-order difference (jerk) on selected joints: current - 2*prev + prev_prev
+    second_diff = (
+        current_action[:, asset_cfg.joint_ids]
+        - 2 * prev_action[:, asset_cfg.joint_ids]
+        + env._action_smoothness_prev_prev_action[:, asset_cfg.joint_ids]
+    )
+
+    # Compute L2 squared penalty
+    penalty = torch.sum(torch.square(second_diff), dim=1)
+
+    # Mask penalty for startup phase (first 3 steps)
+    penalty = torch.where(env.episode_length_buf < 3, torch.zeros_like(penalty), penalty)
+
+    # Update prev_prev_action for next step (store full action)
+    env._action_smoothness_prev_prev_action = prev_action.clone()
+
+    return penalty

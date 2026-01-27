@@ -1,0 +1,21 @@
+{
+    "python.defaultInterpreterPath": "/home/shang_sun/miniconda3/envs/robot_lab/bin/python",
+    "python.languageServer": "Default",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/locolab/source",
+        "/home/shang_sun/IsaacLab/source/isaaclab",
+        "/home/shang_sun/IsaacLab/source/isaaclab_assets",
+        "/home/shang_sun/IsaacLab/source/isaaclab_mimic",
+        "/home/shang_sun/IsaacLab/source/isaaclab_rl",
+        "/home/shang_sun/IsaacLab/source/isaaclab_tasks"
+    ],
+    "cursorpyright.analysis.extraPaths": [
+        "${workspaceFolder}/locolab/source",
+        "/home/shang_sun/IsaacLab/source/isaaclab",
+        "/home/shang_sun/IsaacLab/source/isaaclab_assets",
+        "/home/shang_sun/IsaacLab/source/isaaclab_mimic",
+        "/home/shang_sun/IsaacLab/source/isaaclab_rl",
+        "/home/shang_sun/IsaacLab/source/isaaclab_tasks"
+    ]
+}
+
