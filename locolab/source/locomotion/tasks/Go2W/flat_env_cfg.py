@@ -1,15 +1,19 @@
 """Go2W flat terrain environment configuration."""
 
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
+from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
+from isaaclab.utils.noise import UniformNoiseCfg as Unoise
 
 from locolab.source.locomotion import mdp
 from locolab.source.locomotion.assets.robot import GO2W_CFG
 from locolab.source.locomotion.tasks.velocity_env_cfg import (
     LocomotionCurriculumCfg,
     LocomotionEnvCfg,
+    LocomotionObservationsCfg,
     LocomotionRewardsCfg,
     LocomotionSceneCfg,
 )
@@ -39,11 +43,11 @@ class Go2WSceneCfg(LocomotionSceneCfg):
 class Go2WActionsCfg:
     """Action specifications for Go2W wheel-legged robot."""
 
-    # Joints - Legs (Position Control)
+    # Joints - Legs (Position Control) - 小scale限制腿部运动范围
     joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"],
-        scale=0.25,
+        scale=0.25,  # 从0.25降到0.1，限制腿部动作幅度
         use_default_offset=True,
     )
     # Joints - Wheels (Velocity Control)
@@ -64,12 +68,45 @@ class Go2WActionsCfg:
 class Go2WRewardsCfg(LocomotionRewardsCfg):
     """Reward terms for Go2W wheel-legged robot."""
 
+    # ==========================================================================
+    # WHEEL-SPECIFIC REWARDS - 鼓励使用轮子运动
+    # ==========================================================================
+
+    # -- 轮子速度跟踪：直接奖励轮子速度与期望速度匹配
+    # wheels_vel_tracking = RewTerm(
+    #     func=mdp.wheels_velocity_tracking,
+    #     weight=3.0,  # 高权重，鼓励用轮子
+    #     params={
+    #         "command_name": "base_velocity",
+    #         "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_foot_joint"]),
+    #         "wheel_radius": 0.10,  # 根据URDF wheel mesh
+    #         "wheel_base": 0.28,  # 左右轮距: (0.0465 + 0.0955) * 2 = 0.284m
+    #         "std": 1.0,
+    #     },
+    # )
+
+    # # -- 轮子离地惩罚：角速度指令<0.2时惩罚轮子离地
+    # wheels_air = RewTerm(
+    #     func=mdp.wheels_air_penalty,
+    #     weight=-2.0,  # 惩罚
+    #     params={
+    #         "command_name": "base_velocity",
+    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_foot"]),
+    #         "min_force": 1.0,
+    #         "ang_vel_threshold": 0.2,
+    #     },
+    # )
+
+    # ==========================================================================
+    # BASE STABILITY & REGULARIZATION
+    # ==========================================================================
+
     # -- base stability (additional)
     base_height_l2 = RewTerm(
         func=mdp.base_height_l2,
-        weight=-1.0,  # 从-2.0降低，减少高度惩罚
+        weight=-1.0,
         params={
-            "target_height": 0.45,
+            "target_height": 0.42,
             "sensor_cfg": SceneEntityCfg("height_scanner"),
         },
     )
@@ -77,73 +114,108 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
     # -- joint regularization
     joint_pos_deviation = RewTerm(
         func=mdp.joint_position_penalty,
-        weight=-0.5,  # 从-1.0降低
+        weight=-10.0,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
             "stand_still_scale": 2.0,
-            "velocity_threshold": 0.1,
+            "velocity_threshold": 3,
             "ang_vel_threshold": 0.1,  # 转向时不惩罚关节偏离
         },
     )
     dof_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2,
-        weight=-5e-8,  # 从-2.5e-7降低5倍，主要问题项
+        weight=-2.5e-7,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2,
-        weight=-1e-5,  # 从-2e-5降低
+        weight=-2e-5,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
     dof_vel_l2 = RewTerm(
         func=mdp.joint_vel_l2,
-        weight=-1e-4,  # 从-2e-4降低
+        weight=-2e-4,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
     dof_power_l1 = RewTerm(
         func=mdp.dof_power_l1,
-        weight=-1e-5,  # 从-2e-5降低
+        weight=-2e-5,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
-        weight=-0.5,  # 从-2.0降低4倍
+        weight=-1.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
 
     # -- action regularization (legs)
     action_rate_legs = RewTerm(
         func=mdp.action_rate_l2_mask,
-        weight=-0.01,
+        weight=-5e-3,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
     action_smoothness_legs = RewTerm(
         func=mdp.action_smoothness_penalty,
-        weight=-0.01,
+        weight=-5e-3,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
 
-    # -- action regularization (wheels) - 轮子需要快速响应，大幅降低惩罚
+    # -- action regularization (wheels)
     action_rate_wheels = RewTerm(
         func=mdp.action_rate_l2_mask,
-        weight=-0.001,  # 从-0.01降低10倍
+        weight=-5e-2,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_foot_.*"])},
     )
     action_smoothness_wheels = RewTerm(
         func=mdp.action_smoothness_penalty,
-        weight=-0.001,  # 从-0.01降低10倍
+        weight=-5e-2,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_foot_.*"])},
     )
 
     # -- contact regularization
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-10.0,
+        weight=-1.0,
         params={
             "threshold": 0.1,
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_hip", ".*_thigh", ".*_calf", "base"]),
         },
     )
+
+
+# ==============================================================================
+# Go2W Observations Configuration
+# ==============================================================================
+
+
+@configclass
+class Go2WObservationsCfg(LocomotionObservationsCfg):
+    """Observation specifications for Go2W - only leg joints in policy obs."""
+
+    @configclass
+    class PolicyCfg(LocomotionObservationsCfg.PolicyCfg):
+        """Observations for policy group - only leg joint positions."""
+
+        def __post_init__(self):
+            self.joint_pos.params = {
+                "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])
+            }
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    @configclass
+    class CriticCfg(LocomotionObservationsCfg.CriticCfg):
+        """Observations for critic group - only leg joint positions."""
+
+        def __post_init__(self):
+            self.joint_pos.params = {
+                "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])
+            }
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    policy: PolicyCfg = PolicyCfg()
+    critic: CriticCfg = CriticCfg()
 
 
 # ==============================================================================
@@ -183,6 +255,7 @@ class Go2WFlatEnvCfg(LocomotionEnvCfg):
 
     scene: Go2WSceneCfg = Go2WSceneCfg(num_envs=4096, env_spacing=2.5)
     actions: Go2WActionsCfg = Go2WActionsCfg()
+    observations: Go2WObservationsCfg = Go2WObservationsCfg()
     rewards: Go2WRewardsCfg = Go2WRewardsCfg()
     curriculum: Go2WCurriculumCfg = Go2WCurriculumCfg()
 

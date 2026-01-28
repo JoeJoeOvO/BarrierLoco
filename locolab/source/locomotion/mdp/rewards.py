@@ -501,3 +501,204 @@ def action_smoothness_penalty(
     env._action_smoothness_prev_prev_action = prev_action.clone()
 
     return penalty
+
+
+# ==============================================================================
+# WHEEL-LEGGED ROBOT REWARDS
+# Rewards specifically designed for wheel-legged robots
+# ==============================================================================
+
+
+def wheels_velocity_tracking(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg,
+    wheel_radius: float = 0.05,
+    wheel_base: float = 0.3,
+    std: float = 0.5,
+) -> torch.Tensor:
+    """Reward wheels for matching the expected velocity based on body velocity command.
+
+    For a differential drive robot:
+    - v_left = v_body - omega * wheel_base / 2
+    - v_right = v_body + omega * wheel_base / 2
+    - wheel_angular_vel = v_wheel / wheel_radius
+
+    Args:
+        env: The environment object.
+        command_name: Name of the velocity command.
+        asset_cfg: Configuration with wheel joint names (expects 4 wheels: FL, FR, RL, RR foot joints).
+        wheel_radius: Radius of the wheels in meters.
+        wheel_base: Distance between left and right wheels in meters.
+        std: Standard deviation for exponential kernel.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    cmd = env.command_manager.get_command(command_name)
+
+    # Get commanded linear and angular velocity
+    cmd_lin_vel_x = cmd[:, 0]  # Forward velocity
+    cmd_ang_vel_z = cmd[:, 2]  # Yaw rate
+
+    # Compute expected wheel linear velocities (differential drive)
+    # Left wheels: v - omega * d/2, Right wheels: v + omega * d/2
+    expected_vel_left = cmd_lin_vel_x - cmd_ang_vel_z * wheel_base / 2
+    expected_vel_right = cmd_lin_vel_x + cmd_ang_vel_z * wheel_base / 2
+
+    # Convert to wheel angular velocity
+    expected_omega_left = expected_vel_left / wheel_radius
+    expected_omega_right = expected_vel_right / wheel_radius
+
+    # Get actual wheel velocities (assuming order: FL, FR, RL, RR)
+    wheel_vel = asset.data.joint_vel[:, asset_cfg.joint_ids]
+
+    # Compute error for each wheel (FL=0, FR=1, RL=2, RR=3)
+    # Left wheels: FL(0), RL(2); Right wheels: FR(1), RR(3)
+    error_fl = torch.square(wheel_vel[:, 0] - expected_omega_left)
+    error_fr = torch.square(wheel_vel[:, 1] - expected_omega_right)
+    error_rl = torch.square(wheel_vel[:, 2] - expected_omega_left)
+    error_rr = torch.square(wheel_vel[:, 3] - expected_omega_right)
+
+    total_error = (error_fl + error_fr + error_rl + error_rr) / 4.0
+    return torch.exp(-total_error / std**2)
+
+
+def legs_static_when_moving(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg,
+    velocity_threshold: float = 0.1,
+) -> torch.Tensor:
+    """Penalize leg joint velocity when robot should be moving with wheels.
+
+    When the robot has a non-zero velocity command, the legs should remain relatively
+    static while the wheels do the work.
+
+    Args:
+        env: The environment object.
+        command_name: Name of the velocity command.
+        asset_cfg: Configuration with leg joint names.
+        velocity_threshold: Command magnitude threshold to activate penalty.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    cmd = env.command_manager.get_command(command_name)
+    cmd_norm = torch.linalg.norm(cmd[:, :2], dim=1)
+
+    # Get leg joint velocities
+    leg_vel = asset.data.joint_vel[:, asset_cfg.joint_ids]
+    leg_vel_penalty = torch.sum(torch.square(leg_vel), dim=1)
+
+    # Only penalize when there's a velocity command (robot should be using wheels)
+    return torch.where(cmd_norm > velocity_threshold, leg_vel_penalty, torch.zeros_like(leg_vel_penalty))
+
+
+def wheels_air_penalty(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    sensor_cfg: SceneEntityCfg,
+    min_force: float = 1.0,
+    ang_vel_threshold: float = 0.2,
+) -> torch.Tensor:
+    """Penalize if any wheel loses ground contact when not turning sharply.
+
+    When angular velocity command is low (< threshold), all wheels should maintain
+    ground contact. Returns 1.0 if ANY wheel is in the air, 0.0 otherwise.
+
+    Args:
+        env: The environment object.
+        command_name: Name of the velocity command.
+        sensor_cfg: Configuration for contact sensor with wheel body names.
+        min_force: Minimum contact force to consider as "in contact".
+        ang_vel_threshold: Angular velocity threshold. Penalty only applies when |ang_vel| < threshold.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, 2]
+
+    # Check if each wheel is in contact (positive z force)
+    max_forces = torch.max(contact_forces, dim=1)[0]
+    not_in_contact = (max_forces < min_force).float()
+
+    # Binary: 1.0 if ANY wheel is in air, 0.0 if all wheels on ground
+    any_wheel_in_air = (torch.sum(not_in_contact, dim=1) > 0).float()
+
+    # Only penalize when angular velocity command is low (not turning)
+    cmd = env.command_manager.get_command(command_name)
+    cmd_ang = torch.abs(cmd[:, 2])
+    is_not_turning = (cmd_ang < ang_vel_threshold).float()
+
+    return any_wheel_in_air * is_not_turning
+
+
+def no_leg_ground_contact(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    threshold: float = 1.0,
+) -> torch.Tensor:
+    """Penalize leg bodies (hip, thigh, calf) for contacting the ground.
+
+    For a wheeled robot, only wheels should contact the ground.
+
+    Args:
+        env: The environment object.
+        sensor_cfg: Configuration for contact sensor with leg body names (hip, thigh, calf).
+        threshold: Force threshold to consider as contact.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    contact_forces = torch.norm(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids], dim=-1)
+
+    # Penalize any leg contact
+    leg_contact = (contact_forces > threshold).float()
+    return torch.sum(leg_contact, dim=1)
+
+
+def differential_drive_symmetry(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Reward symmetric wheel velocities between front and rear wheels on same side.
+
+    For stable wheeled locomotion, FL should match RL and FR should match RR.
+
+    Args:
+        env: The environment object.
+        asset_cfg: Configuration with wheel joint names (FL, FR, RL, RR order).
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    wheel_vel = asset.data.joint_vel[:, asset_cfg.joint_ids]
+
+    # FL(0) should match RL(2), FR(1) should match RR(3)
+    left_diff = torch.square(wheel_vel[:, 0] - wheel_vel[:, 2])
+    right_diff = torch.square(wheel_vel[:, 1] - wheel_vel[:, 3])
+
+    # Return negative of error (higher is better)
+    return torch.exp(-(left_diff + right_diff) / 2.0)
+
+
+def wheels_spinning_when_commanded(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg,
+    min_wheel_vel: float = 0.5,
+) -> torch.Tensor:
+    """Reward wheels for spinning when there's a velocity command.
+
+    This encourages the robot to use wheels instead of legs for locomotion.
+
+    Args:
+        env: The environment object.
+        command_name: Name of the velocity command.
+        asset_cfg: Configuration with wheel joint names.
+        min_wheel_vel: Minimum wheel velocity to consider as "spinning".
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    cmd = env.command_manager.get_command(command_name)
+    cmd_norm = torch.linalg.norm(cmd[:, :2], dim=1)
+
+    # Get wheel velocities
+    wheel_vel = torch.abs(asset.data.joint_vel[:, asset_cfg.joint_ids])
+    avg_wheel_vel = torch.mean(wheel_vel, dim=1)
+
+    # Reward when: command exists AND wheels are spinning
+    has_command = (cmd_norm > 0.1).float()
+    wheels_active = (avg_wheel_vel > min_wheel_vel).float()
+
+    return has_command * wheels_active
