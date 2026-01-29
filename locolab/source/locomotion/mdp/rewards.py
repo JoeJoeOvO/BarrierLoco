@@ -544,13 +544,13 @@ def wheels_velocity_tracking(
     expected_vel_left = cmd_lin_vel_x - cmd_ang_vel_z * wheel_base / 2
     expected_vel_right = cmd_lin_vel_x + cmd_ang_vel_z * wheel_base / 2
 
-    # Convert to wheel angular velocity
+    # Convert to wheel angular velocity: omega = v / r
+    # Positive angular velocity = forward motion (verified by testing)
     expected_omega_left = expected_vel_left / wheel_radius
     expected_omega_right = expected_vel_right / wheel_radius
 
     # Get actual wheel velocities (assuming order: FL, FR, RL, RR)
     wheel_vel = asset.data.joint_vel[:, asset_cfg.joint_ids]
-
     # Compute error for each wheel (FL=0, FR=1, RL=2, RR=3)
     # Left wheels: FL(0), RL(2); Right wheels: FR(1), RR(3)
     error_fl = torch.square(wheel_vel[:, 0] - expected_omega_left)
@@ -559,7 +559,9 @@ def wheels_velocity_tracking(
     error_rr = torch.square(wheel_vel[:, 3] - expected_omega_right)
 
     total_error = (error_fl + error_fr + error_rl + error_rr) / 4.0
-    return torch.exp(-total_error / std**2)
+    # Use softer exponential to avoid vanishing reward
+    # Scale error by std^2 before exp to handle large angular velocities
+    return torch.exp(-total_error / (std**2 * 100))
 
 
 def legs_static_when_moving(

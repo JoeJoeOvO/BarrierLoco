@@ -69,35 +69,6 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
     """Reward terms for Go2W wheel-legged robot."""
 
     # ==========================================================================
-    # WHEEL-SPECIFIC REWARDS - 鼓励使用轮子运动
-    # ==========================================================================
-
-    # -- 轮子速度跟踪：直接奖励轮子速度与期望速度匹配
-    # wheels_vel_tracking = RewTerm(
-    #     func=mdp.wheels_velocity_tracking,
-    #     weight=3.0,  # 高权重，鼓励用轮子
-    #     params={
-    #         "command_name": "base_velocity",
-    #         "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_foot_joint"]),
-    #         "wheel_radius": 0.10,  # 根据URDF wheel mesh
-    #         "wheel_base": 0.28,  # 左右轮距: (0.0465 + 0.0955) * 2 = 0.284m
-    #         "std": 1.0,
-    #     },
-    # )
-
-    # # -- 轮子离地惩罚：角速度指令<0.2时惩罚轮子离地
-    # wheels_air = RewTerm(
-    #     func=mdp.wheels_air_penalty,
-    #     weight=-2.0,  # 惩罚
-    #     params={
-    #         "command_name": "base_velocity",
-    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_foot"]),
-    #         "min_force": 1.0,
-    #         "ang_vel_threshold": 0.2,
-    #     },
-    # )
-
-    # ==========================================================================
     # BASE STABILITY & REGULARIZATION
     # ==========================================================================
 
@@ -114,12 +85,12 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
     # -- joint regularization
     joint_pos_deviation = RewTerm(
         func=mdp.joint_position_penalty,
-        weight=-10.0,
+        weight=-1.0,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
             "stand_still_scale": 2.0,
             "velocity_threshold": 3,
-            "ang_vel_threshold": 0.1,  # 转向时不惩罚关节偏离
+            "ang_vel_threshold": 0.2,  # 转向时不惩罚关节偏离
         },
     )
     dof_acc_l2 = RewTerm(

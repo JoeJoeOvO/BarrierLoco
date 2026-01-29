@@ -74,7 +74,7 @@ GO2W_CFG = ArticulationCfg(
             effort_limit=23.5,
             velocity_limit=30.0,
             stiffness=0.0,
-            damping=0.8,
+            damping=0.4,
             friction=0.01,
         ),
     },
