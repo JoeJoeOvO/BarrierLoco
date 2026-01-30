@@ -211,12 +211,12 @@ class LocomotionCommandsCfg:
         class_type=mdp.UniformVelocityCommandYawFrame,
         resampling_time_range=(5.0, 10.0),
         rel_standing_envs=0.2,
-        rel_heading_envs=1.0,
+        rel_heading_envs=0.8,
         heading_command=True,
         heading_control_stiffness=2.0,
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.5, 0.5), lin_vel_y=(-0.1, 0.1), ang_vel_z=(-1.5, 1.5), heading=(-math.pi, math.pi)
+            lin_vel_x=(-1.5, 1.5), lin_vel_y=(-0.1, 0.1), ang_vel_z=(-1.5, 1.5), heading=(-math.pi, math.pi)
         ),
     )
 

@@ -198,18 +198,6 @@ class Go2WObservationsCfg(LocomotionObservationsCfg):
 class Go2WCurriculumCfg(LocomotionCurriculumCfg):
     """Curriculum terms for Go2W training."""
 
-    velocity_curriculum = CurrTerm(
-        func=mdp.velocity_cmd_curriculum,
-        params={
-            "command_name": "base_velocity",
-            "reward_term_name": "track_lin_vel_xy",
-            "reward_threshold": 0.9,
-            "step_size": 0.1,
-            "max_lin_vel_x": (-2.5, 2.5),
-            "max_lin_vel_y": (-0.3, 0.3),
-        },
-    )
-
     def __post_init__(self):
         super().__post_init__()
         self.terrain_levels = None
@@ -238,6 +226,3 @@ class Go2WFlatPlayEnvCfg(Go2WFlatEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 32
-        if self.scene.terrain.terrain_generator is not None:
-            self.scene.terrain.terrain_generator.num_rows = 2
-            self.scene.terrain.terrain_generator.num_cols = 1

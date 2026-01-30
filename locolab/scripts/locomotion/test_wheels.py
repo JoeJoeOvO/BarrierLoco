@@ -16,9 +16,8 @@ simulation_app = app_launcher.app
 
 """Rest everything follows."""
 
-import torch
-
 import isaaclab.sim as sim_utils
+import torch
 from isaaclab.assets import Articulation
 from isaaclab.sim import SimulationContext
 
@@ -82,7 +81,9 @@ def main():
 
     for test_name, wheel_vel_cmd in tests:
         print(f"\n>>> TEST: {test_name}")
-        print(f"    Command: FL={wheel_vel_cmd[0]}, FR={wheel_vel_cmd[1]}, RL={wheel_vel_cmd[2]}, RR={wheel_vel_cmd[3]}")
+        print(
+            f"    Command: FL={wheel_vel_cmd[0]}, FR={wheel_vel_cmd[1]}, RL={wheel_vel_cmd[2]}, RR={wheel_vel_cmd[3]}"
+        )
 
         # Reset robot position - UPRIGHT on ground
         # Quaternion for identity: [w, x, y, z] = [1, 0, 0, 0]
@@ -120,8 +121,6 @@ def main():
 
             # Print every 50 steps
             if step % 50 == 0:
-                base_lin_vel = robot.data.root_lin_vel_b[0]
-                base_ang_vel = robot.data.root_ang_vel_b[0]
                 actual_wheel_vel = robot.data.joint_vel[0, wheel_indices]
                 # Debug: print targets and torques
                 vel_target = robot.data.joint_vel_target[0, wheel_indices]
@@ -129,17 +128,19 @@ def main():
                 applied_torque = robot.data.applied_torque[0, wheel_indices]
 
                 wheel_pos = robot.data.joint_pos[0, wheel_indices]
-                print(f"    Step {step:3d}: "
-                      f"wheel_pos=[{wheel_pos[0]:.1f}, {wheel_pos[1]:.1f}, "
-                      f"{wheel_pos[2]:.1f}, {wheel_pos[3]:.1f}], "
-                      f"wheel_vel=[{actual_wheel_vel[0]:.1f}, {actual_wheel_vel[1]:.1f}, "
-                      f"{actual_wheel_vel[2]:.1f}, {actual_wheel_vel[3]:.1f}], "
-                      f"pos_target=[{pos_target[0]:.1f}, {pos_target[1]:.1f}, "
-                      f"{pos_target[2]:.1f}, {pos_target[3]:.1f}], "
-                      f"vel_target=[{vel_target[0]:.1f}, {vel_target[1]:.1f}, "
-                      f"{vel_target[2]:.1f}, {vel_target[3]:.1f}], "
-                      f"torque=[{applied_torque[0]:.1f}, {applied_torque[1]:.1f}, "
-                      f"{applied_torque[2]:.1f}, {applied_torque[3]:.1f}]")
+                print(
+                    f"    Step {step:3d}: "
+                    f"wheel_pos=[{wheel_pos[0]:.1f}, {wheel_pos[1]:.1f}, "
+                    f"{wheel_pos[2]:.1f}, {wheel_pos[3]:.1f}], "
+                    f"wheel_vel=[{actual_wheel_vel[0]:.1f}, {actual_wheel_vel[1]:.1f}, "
+                    f"{actual_wheel_vel[2]:.1f}, {actual_wheel_vel[3]:.1f}], "
+                    f"pos_target=[{pos_target[0]:.1f}, {pos_target[1]:.1f}, "
+                    f"{pos_target[2]:.1f}, {pos_target[3]:.1f}], "
+                    f"vel_target=[{vel_target[0]:.1f}, {vel_target[1]:.1f}, "
+                    f"{vel_target[2]:.1f}, {vel_target[3]:.1f}], "
+                    f"torque=[{applied_torque[0]:.1f}, {applied_torque[1]:.1f}, "
+                    f"{applied_torque[2]:.1f}, {applied_torque[3]:.1f}]"
+                )
 
         input("    Press Enter to continue...")
 
