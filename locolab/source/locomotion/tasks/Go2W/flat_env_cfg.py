@@ -171,6 +171,11 @@ class Go2WObservationsCfg(LocomotionObservationsCfg):
             self.joint_pos.params = {
                 "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])
             }
+            self.joint_vel.params = {
+                "asset_cfg": SceneEntityCfg(
+                    "robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*", ".*_foot_.*"]
+                )
+            }
             self.enable_corruption = True
             self.concatenate_terms = True
 
@@ -181,6 +186,11 @@ class Go2WObservationsCfg(LocomotionObservationsCfg):
         def __post_init__(self):
             self.joint_pos.params = {
                 "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])
+            }
+            self.joint_vel.params = {
+                "asset_cfg": SceneEntityCfg(
+                    "robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*", ".*_foot_.*"]
+                )
             }
             self.enable_corruption = True
             self.concatenate_terms = True

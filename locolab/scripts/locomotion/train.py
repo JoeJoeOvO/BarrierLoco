@@ -13,6 +13,12 @@ import sys
 
 import gymnasium as gym
 
+# Add the project root to sys.path to allow importing locolab
+# Structure: project_root/locolab/scripts/locomotion/train.py
+# We need to add project_root to sys.path
+project_root = pathlib.Path(__file__).parents[3]
+sys.path.append(str(project_root))
+
 sys.path.insert(0, f"{pathlib.Path(__file__).parent.parent}")
 from list_envs import import_packages  # noqa: F401
 

@@ -1,0 +1,4 @@
+cmake_build/
+install/
+library/
+.cache/

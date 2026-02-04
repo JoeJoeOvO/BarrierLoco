@@ -8,6 +8,8 @@
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import pathlib
+import sys
 from importlib.metadata import version
 
 from isaaclab.app import AppLauncher
@@ -15,6 +17,11 @@ from isaaclab.app import AppLauncher
 # local imports
 import cli_args  # isort: skip
 
+# Add the project root to sys.path to allow importing locolab
+# Structure: project_root/locolab/scripts/locomotion/train.py
+# We need to add project_root to sys.path
+project_root = pathlib.Path(__file__).parents[3]
+sys.path.append(str(project_root))
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
@@ -60,6 +67,7 @@ from isaaclab_tasks.utils import get_checkpoint_path
 from rsl_rl.runners import OnPolicyRunner
 
 import locolab.source.locomotion.tasks  # noqa: F401
+from locolab.source.locomotion.mdp.observations import print_obs_joint_names
 from locolab.source.locomotion.utils.parser_cfg import parse_env_cfg
 
 
@@ -154,6 +162,12 @@ def main():
 
     # reset environment
     obs = env.get_observations()
+    # 打印 obs 中 joint_pos / joint_vel 使用的关节名（policy 组）
+    base_env = env
+    while hasattr(base_env, "unwrapped") and base_env.unwrapped is not base_env:
+        base_env = base_env.unwrapped
+    if hasattr(base_env, "observation_manager"):
+        print_obs_joint_names(base_env)
     timestep = 0
     # simulate environment
     while simulation_app.is_running():
