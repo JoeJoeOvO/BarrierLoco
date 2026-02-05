@@ -74,16 +74,7 @@ std::vector<float> RL::ComputeObservation()
         }
         else if (observation == "ang_vel")
         {
-            // In ROS1 Gazebo, the coordinate system for angular velocity is in the world coordinate system.
-            // In ROS2 Gazebo, mujoco and real robot, the coordinate system for angular velocity is in the body coordinate system.
-            if (this->ang_vel_axis == "body")
-            {
-                obs_list.push_back(this->obs.ang_vel * this->params.Get<float>("ang_vel_scale"));
-            }
-            else if (this->ang_vel_axis == "world")
-            {
-                obs_list.push_back(QuatRotateInverse(this->obs.base_quat, this->obs.ang_vel) * this->params.Get<float>("ang_vel_scale"));
-            }
+            obs_list.push_back(this->obs.ang_vel * this->params.Get<float>("ang_vel_scale"));
         }
         else if (observation == "gravity_vec")
         {
@@ -95,94 +86,29 @@ std::vector<float> RL::ComputeObservation()
         }
         else if (observation == "dof_pos")
         {
-            std::vector<float> dof_pos_rel = this->obs.dof_pos - this->params.Get<std::vector<float>>("default_dof_pos");
-            const auto& wheel_indices = this->params.Get<std::vector<int>>("wheel_indices");
-            const auto& obs_mapping = this->params.Get<std::vector<int>>("obs_mapping");
+            // 转为训练顺序，计算相对位置，过滤轮子，缩放
+            std::vector<float> dof_pos_training = SwapToTraining(this->obs.dof_pos);
+            std::vector<float> default_pos_training = SwapToTraining(this->params.Get<std::vector<float>>("default_dof_pos"));
+            std::vector<float> dof_pos_rel = dof_pos_training - default_pos_training;
 
-            // Filter out wheel joints to match training observation size (12 instead of 16)
-            std::vector<float> filtered_dof_pos;
+            // 过滤轮子 (训练顺序中轮子在最后4个: 12-15)
+            const auto& wheel_indices = this->params.Get<std::vector<int>>("wheel_indices");
             if (!wheel_indices.empty())
             {
-                for (size_t i = 0; i < dof_pos_rel.size(); ++i)
-                {
-                    bool is_wheel = false;
-                    for (int w_idx : wheel_indices)
-                    {
-                        if (static_cast<int>(i) == w_idx)
-                        {
-                            is_wheel = true;
-                            break;
-                        }
-                    }
-                    if (!is_wheel)
-                    {
-                        filtered_dof_pos.push_back(dof_pos_rel[i]);
-                    }
-                }
+                dof_pos_rel.resize(dof_pos_rel.size() - wheel_indices.size());
             }
-            else
-            {
-                filtered_dof_pos = dof_pos_rel;
-            }
-
-            // Reorder to training joint order if obs_mapping is provided
-            if (!obs_mapping.empty() && filtered_dof_pos.size() == 12)
-            {
-                // obs_mapping is for 16 joints, we need mapping for 12 leg joints only
-                // Training order (12 legs): FL_hip,FR_hip,RL_hip,RR_hip, FL_thigh,FR_thigh,RL_thigh,RR_thigh, FL_calf,FR_calf,RL_calf,RR_calf
-                // SDK order (12 legs): FR_hip,FR_thigh,FR_calf, FL_hip,FL_thigh,FL_calf, RR_hip,RR_thigh,RR_calf, RL_hip,RL_thigh,RL_calf
-                // leg_obs_mapping[training_idx] = sdk_idx
-                std::vector<int> leg_obs_mapping = {3, 0, 9, 6, 4, 1, 10, 7, 5, 2, 11, 8};
-                std::vector<float> reordered(12);
-                for (size_t i = 0; i < 12; ++i)
-                {
-                    reordered[i] = filtered_dof_pos[leg_obs_mapping[i]];
-                }
-                obs_list.push_back(reordered * this->params.Get<float>("dof_pos_scale"));
-            }
-            else
-            {
-                obs_list.push_back(filtered_dof_pos * this->params.Get<float>("dof_pos_scale"));
-            }
+            obs_list.push_back(dof_pos_rel * this->params.Get<float>("dof_pos_scale"));
         }
         else if (observation == "dof_vel")
         {
-            const auto& obs_mapping = this->params.Get<std::vector<int>>("obs_mapping");
-            std::vector<float> dof_vel_scaled = this->obs.dof_vel * this->params.Get<float>("dof_vel_scale");
-
-            // Reorder to training joint order if obs_mapping is provided
-            if (!obs_mapping.empty() && obs_mapping.size() == dof_vel_scaled.size())
-            {
-                std::vector<float> reordered(dof_vel_scaled.size());
-                for (size_t i = 0; i < obs_mapping.size(); ++i)
-                {
-                    reordered[obs_mapping[i]] = dof_vel_scaled[i];
-                }
-                obs_list.push_back(reordered);
-            }
-            else
-            {
-                obs_list.push_back(dof_vel_scaled);
-            }
+            // 转为训练顺序，缩放
+            std::vector<float> dof_vel_training = SwapToTraining(this->obs.dof_vel);
+            obs_list.push_back(dof_vel_training * this->params.Get<float>("dof_vel_scale"));
         }
         else if (observation == "actions")
         {
-            const auto& obs_mapping = this->params.Get<std::vector<int>>("obs_mapping");
-
-            // Reorder actions to training joint order if obs_mapping is provided
-            if (!obs_mapping.empty() && obs_mapping.size() == this->obs.actions.size())
-            {
-                std::vector<float> reordered(this->obs.actions.size());
-                for (size_t i = 0; i < obs_mapping.size(); ++i)
-                {
-                    reordered[obs_mapping[i]] = this->obs.actions[i];
-                }
-                obs_list.push_back(reordered);
-            }
-            else
-            {
-                obs_list.push_back(this->obs.actions);
-            }
+            // actions 已经是训练顺序，直接使用
+            obs_list.push_back(this->obs.actions);
         }
         // ============= Other Observations =============
         else if (observation == "whole_body_tracking/motion_command")
@@ -329,22 +255,13 @@ void RL::InitRL(std::string robot_config_path)
 
 void RL::ComputeOutput(const std::vector<float> &actions, std::vector<float> &output_dof_pos, std::vector<float> &output_dof_vel, std::vector<float> &output_dof_tau)
 {
-    const auto& action_mapping = this->params.Get<std::vector<int>>("action_mapping");
+    // actions 是训练顺序，转为 SDK 顺序
+    std::vector<float> actions_sdk = SwapToSDK(actions);
 
-    // Map actions from training order to SDK order if action_mapping is provided
-    std::vector<float> actions_sdk_order = actions;
-    if (!action_mapping.empty() && action_mapping.size() == actions.size())
-    {
-        // action_mapping[training_idx] = sdk_idx
-        // Training order: FL_hip,FR_hip,RL_hip,RR_hip, FL_thigh,FR_thigh,RL_thigh,RR_thigh, FL_calf,FR_calf,RL_calf,RR_calf, FL_foot,FR_foot,RL_foot,RR_foot
-        // SDK order: FR_hip,FR_thigh,FR_calf, FL_hip,FL_thigh,FL_calf, RR_hip,RR_thigh,RR_calf, RL_hip,RL_thigh,RL_calf, FR_foot,FL_foot,RR_foot,RL_foot
-        for (size_t i = 0; i < action_mapping.size(); ++i)
-        {
-            actions_sdk_order[action_mapping[i]] = actions[i];
-        }
-    }
+    // 缩放
+    std::vector<float> actions_scaled = actions_sdk * this->params.Get<std::vector<float>>("action_scale");
 
-    std::vector<float> actions_scaled = actions_sdk_order * this->params.Get<std::vector<float>>("action_scale");
+    // 分离位置和速度动作 (轮子用速度控制，腿用位置控制)
     std::vector<float> pos_actions_scaled = actions_scaled;
     std::vector<float> vel_actions_scaled(actions.size(), 0.0f);
     for (int i : this->params.Get<std::vector<int>>("wheel_indices"))
@@ -353,17 +270,14 @@ void RL::ComputeOutput(const std::vector<float> &actions, std::vector<float> &ou
         vel_actions_scaled[i] = actions_scaled[i];
     }
 
-    // Compute target positions (for legs) and velocities (for wheels)
+    // 计算目标位置和速度
     std::vector<float> target_pos = pos_actions_scaled + this->params.Get<std::vector<float>>("default_dof_pos");
     std::vector<float> target_vel = vel_actions_scaled;
 
     output_dof_pos = target_pos;
     output_dof_vel = target_vel;
 
-    // Torque calculation matching IsaacLab IdealPDActuator:
-    // tau = kp * (pos_target - pos_current) + kd * (vel_target - vel_current)
-    // For legs:  kp > 0, kd > 0, vel_target = 0 -> tau = kp*(pos_target - pos) - kd*vel
-    // For wheels: kp = 0, kd > 0, pos_target = default -> tau = kd*(vel_target - vel)
+    // PD 控制: tau = kp * (pos_target - pos) + kd * (vel_target - vel)
     output_dof_tau = this->params.Get<std::vector<float>>("rl_kp") * (target_pos - this->obs.dof_pos)
                    + this->params.Get<std::vector<float>>("rl_kd") * (target_vel - this->obs.dof_vel);
     output_dof_tau = clamp(output_dof_tau, -this->params.Get<std::vector<float>>("torque_limits"), this->params.Get<std::vector<float>>("torque_limits"));
@@ -376,6 +290,40 @@ int RL::InverseJointMapping(int idx) const
         if (joint_mapping[i] == idx) return (int)i;
     }
     return -1;
+}
+
+std::vector<float> RL::SwapToTraining(const std::vector<float> &sdk_order)
+{
+    // SDK顺序 → 训练顺序
+    // sdk_to_training[sdk_idx] = training_idx
+    const auto& sdk_to_training = this->params.Get<std::vector<int>>("sdk_to_training");
+    if (sdk_to_training.empty() || sdk_to_training.size() != sdk_order.size())
+    {
+        return sdk_order;
+    }
+    std::vector<float> training_order(sdk_order.size());
+    for (size_t i = 0; i < sdk_to_training.size(); ++i)
+    {
+        training_order[sdk_to_training[i]] = sdk_order[i];
+    }
+    return training_order;
+}
+
+std::vector<float> RL::SwapToSDK(const std::vector<float> &training_order)
+{
+    // 训练顺序 → SDK顺序
+    // sdk_to_training[sdk_idx] = training_idx, 所以反向映射
+    const auto& sdk_to_training = this->params.Get<std::vector<int>>("sdk_to_training");
+    if (sdk_to_training.empty() || sdk_to_training.size() != training_order.size())
+    {
+        return training_order;
+    }
+    std::vector<float> sdk_order(training_order.size());
+    for (size_t i = 0; i < sdk_to_training.size(); ++i)
+    {
+        sdk_order[i] = training_order[sdk_to_training[i]];
+    }
+    return sdk_order;
 }
 
 void RL::TorqueProtect(const std::vector<float>& origin_output_dof_tau)

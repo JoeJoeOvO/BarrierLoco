@@ -67,7 +67,6 @@ from isaaclab_tasks.utils import get_checkpoint_path
 from rsl_rl.runners import OnPolicyRunner
 
 import locolab.source.locomotion.tasks  # noqa: F401
-from locolab.source.locomotion.mdp.observations import print_obs_joint_names
 from locolab.source.locomotion.utils.parser_cfg import parse_env_cfg
 
 
@@ -162,12 +161,6 @@ def main():
 
     # reset environment
     obs = env.get_observations()
-    # 打印 obs 中 joint_pos / joint_vel 使用的关节名（policy 组）
-    base_env = env
-    while hasattr(base_env, "unwrapped") and base_env.unwrapped is not base_env:
-        base_env = base_env.unwrapped
-    if hasattr(base_env, "observation_manager"):
-        print_obs_joint_names(base_env)
     timestep = 0
     # simulate environment
     while simulation_app.is_running():

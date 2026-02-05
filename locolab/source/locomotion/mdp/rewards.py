@@ -181,8 +181,9 @@ def joint_position_penalty(
     joint_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
     default_pos = asset.data.default_joint_pos[:, asset_cfg.joint_ids]
     reward = torch.linalg.norm(joint_pos - default_pos, dim=1)
-
-    # Conditions:
+    # joint_names = [asset.joint_names[i] for i in asset_cfg.joint_ids]
+    # print(f"[joint_pos_penalty_stand_still] joint_ids: {asset_cfg.joint_ids}")
+    # print(f"[joint_pos_penalty_stand_still] joint_names: {joint_names}")      # Conditions:
     # - If turning (ang_vel > threshold): normal penalty (not scaled)
     # - If moving (lin_vel > 0 or body_vel > threshold): normal penalty
     # - If standing still (no lin_vel, no ang_vel, no body motion): scaled penalty

@@ -10,15 +10,11 @@ go2w/robot_lab:
   num_observations: 53
   observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
 
-  # 关节顺序映射 (SDK顺序 -> 训练顺序)
+  # 关节顺序映射 (统一使用 sdk_to_training)
   # SDK顺序: FR_hip,FR_thigh,FR_calf, FL_hip,FL_thigh,FL_calf, RR_hip,RR_thigh,RR_calf, RL_hip,RL_thigh,RL_calf, FR_foot,FL_foot,RR_foot,RL_foot
-  # 训练顺序(按类型分组): FL_hip,FR_hip,RL_hip,RR_hip, FL_thigh,FR_thigh,RL_thigh,RR_thigh, FL_calf,FR_calf,RL_calf,RR_calf, FL_foot,FR_foot,RL_foot,RR_foot
-  # obs_mapping[i] = SDK中第i个关节在训练顺序中的位置
-  # 用于将SDK观测重排为训练顺序
-  obs_mapping: [1, 5, 9, 0, 4, 8, 3, 7, 11, 2, 6, 10, 13, 12, 15, 14]
-  # action_mapping[i] = 训练输出第i个动作应该应用到SDK的哪个关节
-  # 用于将网络输出映射回SDK顺序
-  action_mapping: [3, 0, 9, 6, 4, 1, 10, 7, 5, 2, 11, 8, 13, 12, 15, 14]
+  # 训练顺序: FL_hip,FR_hip,RL_hip,RR_hip, FL_thigh,FR_thigh,RL_thigh,RR_thigh, FL_calf,FR_calf,RL_calf,RR_calf, FL_foot,FR_foot,RL_foot,RR_foot
+  # sdk_to_training[sdk_idx] = training_idx
+  sdk_to_training: [1, 5, 9, 0, 4, 8, 3, 7, 11, 2, 6, 10, 13, 12, 15, 14]
   observations_history: []  # 0 is the latest observation
   observations_history_priority: "time"  # "time" or "term" priority
   clip_obs: 100.0

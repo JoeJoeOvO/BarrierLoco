@@ -21,10 +21,13 @@ repos:
       - id: check-merge-conflict
       - id: check-case-conflict
       - id: check-executables-have-shebangs
+        exclude: ^deploy/src/rl_deploy/library/thirdparty/
       - id: check-toml
       - id: end-of-file-fixer
       - id: check-shebang-scripts-are-executable
+        exclude: ^deploy/src/rl_deploy/library/thirdparty/
       - id: detect-private-key
+        exclude: ^deploy/src/rl_deploy/library/thirdparty/
       - id: debug-statements
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
@@ -41,6 +44,7 @@ repos:
     rev: v2.2.6
     hooks:
       - id: codespell
+        exclude: ^deploy/src/rl_deploy/library/(thirdparty|core/matplotlibcpp)/
         additional_dependencies:
           - tomli
   - repo: https://github.com/pre-commit/pygrep-hooks

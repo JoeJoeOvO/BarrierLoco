@@ -120,12 +120,12 @@ struct Control
     float yaw = 0.0f;
     bool navigation_mode = false;
 
-    void SetKeyboard(Input::Keyboard keyboad)
+    void SetKeyboard(Input::Keyboard keyboard)
     {
-        if (current_keyboard != keyboad)
+        if (current_keyboard != keyboard)
         {
             last_keyboard = current_keyboard;
-            current_keyboard = keyboad;
+            current_keyboard = keyboard;
         }
     }
 
@@ -140,17 +140,7 @@ struct Control
 
     void ClearInput()
     {
-        // Only clear state-switching keys (Num0-Num9, P), keep movement keys (W,A,S,D,Q,E)
-        if (current_keyboard >= Input::Keyboard::Num0 && current_keyboard <= Input::Keyboard::Num9)
-        {
-            last_keyboard = current_keyboard;
-            current_keyboard = Input::Keyboard::None;
-        }
-        else if (current_keyboard == Input::Keyboard::P || current_keyboard == Input::Keyboard::N)
-        {
-            last_keyboard = current_keyboard;
-            current_keyboard = Input::Keyboard::None;
-        }
+        current_keyboard = last_keyboard;
         current_gamepad = Input::Gamepad::None;
     }
 };
@@ -227,6 +217,10 @@ public:
     virtual void SetCommand(const RobotCommand<float> *command) = 0;
     void StateController(const RobotState<float> *state, RobotCommand<float> *command);
     void ComputeOutput(const std::vector<float> &actions, std::vector<float> &output_dof_pos, std::vector<float> &output_dof_vel, std::vector<float> &output_dof_tau);
+
+    // joint order swap functions
+    std::vector<float> SwapToTraining(const std::vector<float> &sdk_order);   // SDK → Training
+    std::vector<float> SwapToSDK(const std::vector<float> &training_order);   // Training → SDK
 
     // yaml params
     void ReadYaml(const std::string& file_path, const std::string& file_name);

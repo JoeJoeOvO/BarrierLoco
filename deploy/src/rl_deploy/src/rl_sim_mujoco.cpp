@@ -113,9 +113,9 @@ RL_Sim::RL_Sim(int argc, char **argv)
     this->loop_keyboard = std::make_shared<LoopFunc>("loop_keyboard", 0.05, std::bind(&RL_Sim::KeyboardInterface, this));
     this->loop_keyboard->start();
 
-    // joystick
-    this->loop_joystick = std::make_shared<LoopFunc>("loop_joystick", 0.01, std::bind(&RL_Sim::GetSysJoystick, this));
-    this->loop_joystick->start();
+    // joystick (disabled - mouse may be recognized as js0)
+    // this->loop_joystick = std::make_shared<LoopFunc>("loop_joystick", 0.01, std::bind(&RL_Sim::GetSysJoystick, this));
+    // this->loop_joystick->start();
 
 #ifdef PLOT
     this->plot_t = std::vector<int>(this->plot_size, 0);
@@ -142,7 +142,7 @@ RL_Sim::~RL_Sim()
     instance = nullptr;
 
     this->loop_keyboard->shutdown();
-    this->loop_joystick->shutdown();
+    // this->loop_joystick->shutdown();
     this->loop_control->shutdown();
     this->loop_rl->shutdown();
 #ifdef PLOT
