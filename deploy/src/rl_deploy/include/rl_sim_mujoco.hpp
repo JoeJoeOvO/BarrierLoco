@@ -98,7 +98,6 @@ private:
     void GetSysJoystick();
 
     // others
-    std::string gazebo_model_name;
     std::map<std::string, float> joint_positions;
     std::map<std::string, float> joint_velocities;
     std::map<std::string, float> joint_efforts;
