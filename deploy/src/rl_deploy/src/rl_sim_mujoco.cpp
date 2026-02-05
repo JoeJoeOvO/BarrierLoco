@@ -266,7 +266,10 @@ void RL_Sim::GetSysJoystick()
             }
             else
             {
-                this->sys_js_axis[this->sys_js_event.number] = this->sys_js_event.value;
+                // Apply deadzone to normalized value, then scale back
+                double sign = (normalized > 0) ? 1.0 : -1.0;
+                double adjusted = sign * (std::abs(normalized) - this->axis_deadzone) / (1.0 - this->axis_deadzone);
+                this->sys_js_axis[this->sys_js_event.number] = static_cast<int>(adjusted * this->sys_js_max_value);
             }
         }
     }

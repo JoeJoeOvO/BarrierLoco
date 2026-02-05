@@ -96,11 +96,11 @@ std::vector<float> RL::ComputeObservation()
         else if (observation == "dof_pos")
         {
             std::vector<float> dof_pos_rel = this->obs.dof_pos - this->params.Get<std::vector<float>>("default_dof_pos");
+            const auto& wheel_indices = this->params.Get<std::vector<int>>("wheel_indices");
+            const auto& obs_mapping = this->params.Get<std::vector<int>>("obs_mapping");
 
             // Filter out wheel joints to match training observation size (12 instead of 16)
             std::vector<float> filtered_dof_pos;
-            const auto& wheel_indices = this->params.Get<std::vector<int>>("wheel_indices");
-
             if (!wheel_indices.empty())
             {
                 for (size_t i = 0; i < dof_pos_rel.size(); ++i)
@@ -119,21 +119,70 @@ std::vector<float> RL::ComputeObservation()
                         filtered_dof_pos.push_back(dof_pos_rel[i]);
                     }
                 }
-                obs_list.push_back(filtered_dof_pos * this->params.Get<float>("dof_pos_scale"));
             }
             else
             {
-                // Fallback for robots without defined wheels (e.g. A1, Go2 non-W)
-                obs_list.push_back(dof_pos_rel * this->params.Get<float>("dof_pos_scale"));
+                filtered_dof_pos = dof_pos_rel;
+            }
+
+            // Reorder to training joint order if obs_mapping is provided
+            if (!obs_mapping.empty() && filtered_dof_pos.size() == 12)
+            {
+                // obs_mapping is for 16 joints, we need mapping for 12 leg joints only
+                // Training order (12 legs): FL_hip,FR_hip,RL_hip,RR_hip, FL_thigh,FR_thigh,RL_thigh,RR_thigh, FL_calf,FR_calf,RL_calf,RR_calf
+                // SDK order (12 legs): FR_hip,FR_thigh,FR_calf, FL_hip,FL_thigh,FL_calf, RR_hip,RR_thigh,RR_calf, RL_hip,RL_thigh,RL_calf
+                // leg_obs_mapping[training_idx] = sdk_idx
+                std::vector<int> leg_obs_mapping = {3, 0, 9, 6, 4, 1, 10, 7, 5, 2, 11, 8};
+                std::vector<float> reordered(12);
+                for (size_t i = 0; i < 12; ++i)
+                {
+                    reordered[i] = filtered_dof_pos[leg_obs_mapping[i]];
+                }
+                obs_list.push_back(reordered * this->params.Get<float>("dof_pos_scale"));
+            }
+            else
+            {
+                obs_list.push_back(filtered_dof_pos * this->params.Get<float>("dof_pos_scale"));
             }
         }
         else if (observation == "dof_vel")
         {
-            obs_list.push_back(this->obs.dof_vel * this->params.Get<float>("dof_vel_scale"));
+            const auto& obs_mapping = this->params.Get<std::vector<int>>("obs_mapping");
+            std::vector<float> dof_vel_scaled = this->obs.dof_vel * this->params.Get<float>("dof_vel_scale");
+
+            // Reorder to training joint order if obs_mapping is provided
+            if (!obs_mapping.empty() && obs_mapping.size() == dof_vel_scaled.size())
+            {
+                std::vector<float> reordered(dof_vel_scaled.size());
+                for (size_t i = 0; i < obs_mapping.size(); ++i)
+                {
+                    reordered[obs_mapping[i]] = dof_vel_scaled[i];
+                }
+                obs_list.push_back(reordered);
+            }
+            else
+            {
+                obs_list.push_back(dof_vel_scaled);
+            }
         }
         else if (observation == "actions")
         {
-            obs_list.push_back(this->obs.actions);
+            const auto& obs_mapping = this->params.Get<std::vector<int>>("obs_mapping");
+
+            // Reorder actions to training joint order if obs_mapping is provided
+            if (!obs_mapping.empty() && obs_mapping.size() == this->obs.actions.size())
+            {
+                std::vector<float> reordered(this->obs.actions.size());
+                for (size_t i = 0; i < obs_mapping.size(); ++i)
+                {
+                    reordered[obs_mapping[i]] = this->obs.actions[i];
+                }
+                obs_list.push_back(reordered);
+            }
+            else
+            {
+                obs_list.push_back(this->obs.actions);
+            }
         }
         // ============= Other Observations =============
         else if (observation == "whole_body_tracking/motion_command")
@@ -280,7 +329,22 @@ void RL::InitRL(std::string robot_config_path)
 
 void RL::ComputeOutput(const std::vector<float> &actions, std::vector<float> &output_dof_pos, std::vector<float> &output_dof_vel, std::vector<float> &output_dof_tau)
 {
-    std::vector<float> actions_scaled = actions * this->params.Get<std::vector<float>>("action_scale");
+    const auto& action_mapping = this->params.Get<std::vector<int>>("action_mapping");
+
+    // Map actions from training order to SDK order if action_mapping is provided
+    std::vector<float> actions_sdk_order = actions;
+    if (!action_mapping.empty() && action_mapping.size() == actions.size())
+    {
+        // action_mapping[training_idx] = sdk_idx
+        // Training order: FL_hip,FR_hip,RL_hip,RR_hip, FL_thigh,FR_thigh,RL_thigh,RR_thigh, FL_calf,FR_calf,RL_calf,RR_calf, FL_foot,FR_foot,RL_foot,RR_foot
+        // SDK order: FR_hip,FR_thigh,FR_calf, FL_hip,FL_thigh,FL_calf, RR_hip,RR_thigh,RR_calf, RL_hip,RL_thigh,RL_calf, FR_foot,FL_foot,RR_foot,RL_foot
+        for (size_t i = 0; i < action_mapping.size(); ++i)
+        {
+            actions_sdk_order[action_mapping[i]] = actions[i];
+        }
+    }
+
+    std::vector<float> actions_scaled = actions_sdk_order * this->params.Get<std::vector<float>>("action_scale");
     std::vector<float> pos_actions_scaled = actions_scaled;
     std::vector<float> vel_actions_scaled(actions.size(), 0.0f);
     for (int i : this->params.Get<std::vector<int>>("wheel_indices"))
@@ -288,10 +352,20 @@ void RL::ComputeOutput(const std::vector<float> &actions, std::vector<float> &ou
         pos_actions_scaled[i] = 0.0f;
         vel_actions_scaled[i] = actions_scaled[i];
     }
-    std::vector<float> all_actions_scaled = pos_actions_scaled + vel_actions_scaled;
-    output_dof_pos = pos_actions_scaled + this->params.Get<std::vector<float>>("default_dof_pos");
-    output_dof_vel = vel_actions_scaled;
-    output_dof_tau = this->params.Get<std::vector<float>>("rl_kp") * (all_actions_scaled + this->params.Get<std::vector<float>>("default_dof_pos") - this->obs.dof_pos) - this->params.Get<std::vector<float>>("rl_kd") * this->obs.dof_vel;
+
+    // Compute target positions (for legs) and velocities (for wheels)
+    std::vector<float> target_pos = pos_actions_scaled + this->params.Get<std::vector<float>>("default_dof_pos");
+    std::vector<float> target_vel = vel_actions_scaled;
+
+    output_dof_pos = target_pos;
+    output_dof_vel = target_vel;
+
+    // Torque calculation matching IsaacLab IdealPDActuator:
+    // tau = kp * (pos_target - pos_current) + kd * (vel_target - vel_current)
+    // For legs:  kp > 0, kd > 0, vel_target = 0 -> tau = kp*(pos_target - pos) - kd*vel
+    // For wheels: kp = 0, kd > 0, pos_target = default -> tau = kd*(vel_target - vel)
+    output_dof_tau = this->params.Get<std::vector<float>>("rl_kp") * (target_pos - this->obs.dof_pos)
+                   + this->params.Get<std::vector<float>>("rl_kd") * (target_vel - this->obs.dof_vel);
     output_dof_tau = clamp(output_dof_tau, -this->params.Get<std::vector<float>>("torque_limits"), this->params.Get<std::vector<float>>("torque_limits"));
 }
 

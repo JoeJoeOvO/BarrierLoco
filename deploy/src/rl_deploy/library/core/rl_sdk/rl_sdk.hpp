@@ -140,7 +140,17 @@ struct Control
 
     void ClearInput()
     {
-        current_keyboard = last_keyboard;
+        // Only clear state-switching keys (Num0-Num9, P), keep movement keys (W,A,S,D,Q,E)
+        if (current_keyboard >= Input::Keyboard::Num0 && current_keyboard <= Input::Keyboard::Num9)
+        {
+            last_keyboard = current_keyboard;
+            current_keyboard = Input::Keyboard::None;
+        }
+        else if (current_keyboard == Input::Keyboard::P || current_keyboard == Input::Keyboard::N)
+        {
+            last_keyboard = current_keyboard;
+            current_keyboard = Input::Keyboard::None;
+        }
         current_gamepad = Input::Gamepad::None;
     }
 };

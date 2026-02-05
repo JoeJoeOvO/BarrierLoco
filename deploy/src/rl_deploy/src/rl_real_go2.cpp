@@ -154,24 +154,52 @@ void RL_Real::GetState(RobotState<float> *state)
     {
         state->imu.gyroscope[i] = this->unitree_low_state.imu_state().gyroscope()[i];
     }
-    for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+    const auto& joint_mapping = this->params.Get<std::vector<int>>("joint_mapping");
+    const int num_dofs = this->params.Get<int>("num_of_dofs");
+    const size_t motor_state_size = this->unitree_low_state.motor_state().size();
+
+    for (int i = 0; i < num_dofs; ++i)
     {
-        state->motor_state.q[i] = this->unitree_low_state.motor_state()[this->params.Get<std::vector<int>>("joint_mapping")[i]].q();
-        state->motor_state.dq[i] = this->unitree_low_state.motor_state()[this->params.Get<std::vector<int>>("joint_mapping")[i]].dq();
-        state->motor_state.tau_est[i] = this->unitree_low_state.motor_state()[this->params.Get<std::vector<int>>("joint_mapping")[i]].tau_est();
+        if (i >= static_cast<int>(joint_mapping.size()))
+        {
+            std::cout << LOGGER::ERROR << "joint_mapping index out of range: " << i << std::endl;
+            break;
+        }
+        int mapped_idx = joint_mapping[i];
+        if (mapped_idx < 0 || mapped_idx >= static_cast<int>(motor_state_size))
+        {
+            std::cout << LOGGER::ERROR << "motor_state index out of range: " << mapped_idx << std::endl;
+            continue;
+        }
+        state->motor_state.q[i] = this->unitree_low_state.motor_state()[mapped_idx].q();
+        state->motor_state.dq[i] = this->unitree_low_state.motor_state()[mapped_idx].dq();
+        state->motor_state.tau_est[i] = this->unitree_low_state.motor_state()[mapped_idx].tau_est();
     }
 }
 
 void RL_Real::SetCommand(const RobotCommand<float> *command)
 {
-    for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+    const auto& joint_mapping = this->params.Get<std::vector<int>>("joint_mapping");
+    const int num_dofs = this->params.Get<int>("num_of_dofs");
+    const size_t motor_cmd_size = this->unitree_low_command.motor_cmd().size();
+
+    for (int i = 0; i < num_dofs; ++i)
     {
-        this->unitree_low_command.motor_cmd()[this->params.Get<std::vector<int>>("joint_mapping")[i]].mode() = 0x01;
-        this->unitree_low_command.motor_cmd()[this->params.Get<std::vector<int>>("joint_mapping")[i]].q() = command->motor_command.q[i];
-        this->unitree_low_command.motor_cmd()[this->params.Get<std::vector<int>>("joint_mapping")[i]].dq() = command->motor_command.dq[i];
-        this->unitree_low_command.motor_cmd()[this->params.Get<std::vector<int>>("joint_mapping")[i]].kp() = command->motor_command.kp[i];
-        this->unitree_low_command.motor_cmd()[this->params.Get<std::vector<int>>("joint_mapping")[i]].kd() = command->motor_command.kd[i];
-        this->unitree_low_command.motor_cmd()[this->params.Get<std::vector<int>>("joint_mapping")[i]].tau() = command->motor_command.tau[i];
+        if (i >= static_cast<int>(joint_mapping.size()))
+        {
+            break;
+        }
+        int mapped_idx = joint_mapping[i];
+        if (mapped_idx < 0 || mapped_idx >= static_cast<int>(motor_cmd_size))
+        {
+            continue;
+        }
+        this->unitree_low_command.motor_cmd()[mapped_idx].mode() = 0x01;
+        this->unitree_low_command.motor_cmd()[mapped_idx].q() = command->motor_command.q[i];
+        this->unitree_low_command.motor_cmd()[mapped_idx].dq() = command->motor_command.dq[i];
+        this->unitree_low_command.motor_cmd()[mapped_idx].kp() = command->motor_command.kp[i];
+        this->unitree_low_command.motor_cmd()[mapped_idx].kd() = command->motor_command.kd[i];
+        this->unitree_low_command.motor_cmd()[mapped_idx].tau() = command->motor_command.tau[i];
     }
 
     this->unitree_low_command.crc() = Crc32Core((uint32_t *)&unitree_low_command, (sizeof(unitree_go::msg::dds_::LowCmd_) >> 2) - 1);

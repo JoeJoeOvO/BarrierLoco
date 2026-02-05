@@ -15,11 +15,9 @@ if(USE_CMAKE)
     set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 endif()
 
-if(NOT USE_CMAKE)
-    add_compile_definitions(USE_ROS2)
-else()
-    message(WARNING "ROS_DISTRO not set, assuming non-ROS mode")
+if(USE_CMAKE)
     add_compile_definitions(USE_CMAKE)
+    message(STATUS "Building with CMake mode (no ROS)")
 endif()
 
 # MuJoCo simulator option
@@ -38,9 +36,11 @@ endif()
 # Get project root directory
 get_filename_component(PROJECT_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 
-add_definitions(-DCMAKE_CURRENT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-add_definitions(-DPOLICY_DIR="${PROJECT_ROOT_DIR}/policy")
-add_definitions(-DBOOST_BIND_GLOBAL_PLACEHOLDERS)
+add_compile_definitions(
+    CMAKE_CURRENT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    POLICY_DIR="${PROJECT_ROOT_DIR}/policy"
+    BOOST_BIND_GLOBAL_PLACEHOLDERS
+)
 
 if(NOT USE_CMAKE)
     find_package(ament_cmake REQUIRED)
@@ -48,7 +48,6 @@ if(NOT USE_CMAKE)
     find_package(robot_msgs REQUIRED)
     find_package(geometry_msgs REQUIRED)
     ament_package()
-
     add_compile_definitions(USE_ROS2)
 endif()
 
@@ -405,21 +404,28 @@ if(USE_MUJOCO)
     # Find GLFW
     find_package(glfw3 REQUIRED)
 
-    # Platform-specific library names
+    # Find MuJoCo library dynamically (avoid hardcoding version)
     if(SYSTEM_TYPE STREQUAL "Linux")
-        set(MUJOCO_LIB_NAME "libmujoco.so.3.2.7")
+        file(GLOB MUJOCO_LIB_CANDIDATES "${MUJOCO_LIB_DIR}/libmujoco.so*")
     elseif(SYSTEM_TYPE STREQUAL "Darwin")
-        set(MUJOCO_LIB_NAME "libmujoco.3.2.7.dylib")
+        file(GLOB MUJOCO_LIB_CANDIDATES "${MUJOCO_LIB_DIR}/libmujoco*.dylib")
     elseif(SYSTEM_TYPE STREQUAL "Windows")
-        set(MUJOCO_LIB_NAME "mujoco.dll")
+        file(GLOB MUJOCO_LIB_CANDIDATES "${MUJOCO_LIB_DIR}/mujoco.dll")
     else()
         message(FATAL_ERROR "Unsupported platform: ${SYSTEM_TYPE}")
+    endif()
+
+    if(MUJOCO_LIB_CANDIDATES)
+        list(GET MUJOCO_LIB_CANDIDATES 0 MUJOCO_LIB_PATH)
+        message(STATUS "Found MuJoCo library: ${MUJOCO_LIB_PATH}")
+    else()
+        message(FATAL_ERROR "MuJoCo library not found in ${MUJOCO_LIB_DIR}")
     endif()
 
     # Import MuJoCo library with RPATH
     add_library(mujoco_prebuilt SHARED IMPORTED)
     set_target_properties(mujoco_prebuilt PROPERTIES
-        IMPORTED_LOCATION "${MUJOCO_LIB_DIR}/${MUJOCO_LIB_NAME}"
+        IMPORTED_LOCATION "${MUJOCO_LIB_PATH}"
         INTERFACE_INCLUDE_DIRECTORIES "${MUJOCO_INCLUDE_DIR}"
         IMPORTED_NO_SONAME TRUE
     )
