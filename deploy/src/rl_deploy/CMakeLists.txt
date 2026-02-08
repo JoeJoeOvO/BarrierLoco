@@ -360,7 +360,7 @@ endif()
 
 if(NOT USE_CMAKE)
     install(
-        DIRECTORY launch worlds ${PROJECT_ROOT_DIR}/policy
+        DIRECTORY launch ${PROJECT_ROOT_DIR}/policy
         DESTINATION share/${PROJECT_NAME}/${dir}
     )
 endif()

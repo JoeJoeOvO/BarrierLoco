@@ -58,36 +58,55 @@ cp /path/to/your/exported/policy.onnx policy/go2w/robot_lab/
 
 ### 4. 运行
 
+#### MuJoCo 仿真
 ```bash
-# MuJoCo 仿真
 ./cmake_build/bin/rl_sim_mujoco go2w scene
-
-# 真机部署 (需连接机器人)
-./cmake_build/bin/rl_real_go2 go2w
 ```
 
-## 构建模式
+#### 真机部署 (Go2/Go2W/G1)
 
-| 命令 | 用途 | 输出 |
-|------|------|------|
-| `./build.sh -mj` | MuJoCo 仿真测试 | `rl_sim_mujoco` |
-| `./build.sh -m` | 纯硬件部署 | `rl_real_go2` |
-| `./build.sh` | ROS2 完整构建 | ROS2 节点 |
-| `./build.sh -c` | 清理构建 | - |
+**网络配置**
+1. 用网线的一端连接机器人的内部网口（位于机身后部或侧面），另一端连接电脑。
+2. 开启电脑的 **USB Ethernet**（或有线网卡）并进行静态 IP 配置。
+3. 机器狗机载电脑的 IP 地址固定为 `192.168.123.161`。
+4. 将电脑的 IP 地址设置为与机器狗同一网段（如 `192.168.123.222`），子网掩码 `255.255.255.0`。
+5. 通过 `ifconfig` 或 `nmcli device` 命令查看该网卡的名称（例如 `eno1` 或 `enxf8e43b808e06`），下文用 `<INTERFACE>` 代替。
 
-## 键盘控制
+**启动控制程序**
+如果控制 Go2W (轮足版)，需要在命令后加 `wheel` 参数，否则留空。
 
-### 状态切换
+- **ROS2 模式** (推荐):
+  ```bash
+  source install/setup.bash
+  ros2 run rl_deploy rl_real_go2 <INTERFACE> [wheel]
+  ```
+
+- **CMake 模式**:
+  ```bash
+  ./cmake_build/bin/rl_real_go2 <INTERFACE> [wheel]
+  ```
+
+---
+
+## 操控说明 (真机 & 仿真)
+
+### 手柄控制 (Unitree Bluetooth Gamepad)
+| 组合键 | 功能 |
+|------|------|
+| **L1 + Start** | 进入运动模式 (切换到站立或行走) |
+| **L1 + A** | 切换到 Stand (站立) |
+| **L1 + B** | 切换到 Locomotion (行走/RL 开启) |
+| **L1 + X** | 切换到 Passive (趴下/电机失去力矩) |
+| **左摇杆** | 控制 前后/左右 移动速度 |
+| **右摇杆** | 控制 原地转向 速度 |
+
+### 键盘控制
 | 按键 | 功能 |
 |------|------|
-| `0` | 切换到 GetUp (站立) |
+| `0` | 切换到 Stand (站立) |
 | `1` | 切换到 RL Locomotion |
-| `9` | 切换到 GetDown (趴下) |
-| `P` | 切换到 Passive (被动) |
-
-### 运动控制
-| 按键 | 功能 |
-|------|------|
+| `9` | 切换到 GetDown (受控蹲下) |
+| `P` | 切换到 Passive (强制趴下) |
 | `W/S` | 前进/后退 |
 | `A/D` | 左移/右移 |
 | `Q/E` | 左转/右转 |
