@@ -72,6 +72,10 @@ void PlatformUIAdapter::OnKey(int key, int scancode, int act) {
   state_.keytime = std::chrono::duration<double>(
       std::chrono::steady_clock::now().time_since_epoch()).count();
 
+  if (event_interceptor_ && event_interceptor_(&state_)) {
+    return;
+  }
+
   // application-specific processing
   if (event_callback_) {
     event_callback_(&state_);

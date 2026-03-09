@@ -1,1 +1,6 @@
-from .rsl_rl_ppo_cfg import BasePPORunnerCfg  # noqa: F401
+from .rsl_rl_ppo_cfg import (  # noqa: F401
+    BasePPORunnerCfg,
+    Go2WFlatRnnDecoderPPORunnerCfg,
+    Go2WRoughRnnDecoderPPORunnerCfg,
+    RecurrentDecoderPPORunnerCfg,
+)

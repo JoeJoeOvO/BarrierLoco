@@ -231,6 +231,10 @@ bool GlfwAdapter::IsShiftKeyPressed() const {
          Glfw().glfwGetKey(window_, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
 }
 
+bool GlfwAdapter::IsKeyPressed(int key) const {
+  return Glfw().glfwGetKey(window_, key) == GLFW_PRESS;
+}
+
 bool GlfwAdapter::IsMouseButtonDownEvent(int act) const {
   return act == GLFW_PRESS;
 }

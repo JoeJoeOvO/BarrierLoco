@@ -52,6 +52,7 @@ class GlfwAdapter : public PlatformUIAdapter {
   bool IsAltKeyPressed() const override;
   bool IsCtrlKeyPressed() const override;
   bool IsShiftKeyPressed() const override;
+  bool IsKeyPressed(int key) const override;
 
   bool IsMouseButtonDownEvent(int act) const override;
   bool IsKeyDownEvent(int act) const override;

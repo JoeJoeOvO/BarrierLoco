@@ -4,6 +4,7 @@
  */
 
 #include "rl_sim_mujoco.hpp"
+#include <GLFW/glfw3.h>
 
 RL_Sim* RL_Sim::instance = nullptr;
 
@@ -60,6 +61,7 @@ RL_Sim::RL_Sim(int argc, char **argv)
     sim = std::make_unique<mj::Simulate>(
         std::make_unique<mj::GlfwAdapter>(),
         &cam, &opt, &pert, /* is_passive = */ false);
+    sim->platform_ui->SetEventInterceptor(&RL_Sim::MujocoEventInterceptor);
 
     std::string filename = std::string(CMAKE_CURRENT_SOURCE_DIR) + "/../robot_description/" + this->robot_name + "_description/mjcf/" + this->scene_name + ".xml";
 
@@ -110,7 +112,7 @@ RL_Sim::RL_Sim(int argc, char **argv)
     this->loop_rl->start();
 
     // keyboard
-    this->loop_keyboard = std::make_shared<LoopFunc>("loop_keyboard", 0.05, std::bind(&RL_Sim::KeyboardInterface, this));
+    this->loop_keyboard = std::make_shared<LoopFunc>("loop_keyboard", 0.05, std::bind(&RL_Sim::WindowKeyboardInterface, this));
     this->loop_keyboard->start();
 
     // joystick (disabled - mouse may be recognized as js0)
@@ -202,6 +204,7 @@ void RL_Sim::RobotControl()
         {
             mj_resetData(this->mj_model, this->mj_data);
             mj_forward(this->mj_model, this->mj_data);
+            this->ResetPolicyState();
         }
     }
     if (this->control.current_keyboard == Input::Keyboard::Enter || this->control.current_gamepad == Input::Gamepad::RB_X)
@@ -222,6 +225,111 @@ void RL_Sim::RobotControl()
     this->control.ClearInput();
 
     this->SetCommand(&this->robot_command);
+}
+
+bool RL_Sim::MujocoEventInterceptor(mjuiState* state)
+{
+    if (state == nullptr || state->type != mjEVENT_KEY)
+    {
+        return false;
+    }
+
+    switch (state->key)
+    {
+        case GLFW_KEY_0:
+        case GLFW_KEY_1:
+        case GLFW_KEY_9:
+        case GLFW_KEY_P:
+        case GLFW_KEY_R:
+        case GLFW_KEY_ENTER:
+        case GLFW_KEY_SPACE:
+        case GLFW_KEY_W:
+        case GLFW_KEY_A:
+        case GLFW_KEY_S:
+        case GLFW_KEY_D:
+        case GLFW_KEY_Q:
+        case GLFW_KEY_E:
+            return true;
+        default:
+            return false;
+    }
+}
+
+void RL_Sim::WindowKeyboardInterface()
+{
+    if (!this->sim || !this->sim->platform_ui)
+    {
+        this->RL::KeyboardInterface();
+        return;
+    }
+
+    auto update_key = [&](int key) -> Button&
+    {
+        auto& button = this->window_key_buttons[key];
+        button.update(this->sim->platform_ui->IsKeyPressed(key));
+        return button;
+    };
+
+    if (update_key(GLFW_KEY_0).on_press)
+    {
+        this->control.SetKeyboard(Input::Keyboard::Num0);
+        return;
+    }
+    if (update_key(GLFW_KEY_1).on_press)
+    {
+        this->control.SetKeyboard(Input::Keyboard::Num1);
+        return;
+    }
+    if (update_key(GLFW_KEY_9).on_press)
+    {
+        this->control.SetKeyboard(Input::Keyboard::Num9);
+        return;
+    }
+    if (update_key(GLFW_KEY_P).on_press)
+    {
+        this->control.SetKeyboard(Input::Keyboard::P);
+        return;
+    }
+    if (update_key(GLFW_KEY_R).on_press)
+    {
+        this->control.SetKeyboard(Input::Keyboard::R);
+        return;
+    }
+    if (update_key(GLFW_KEY_ENTER).on_press)
+    {
+        this->control.SetKeyboard(Input::Keyboard::Enter);
+        return;
+    }
+    if (update_key(GLFW_KEY_SPACE).on_press)
+    {
+        this->control.SetKeyboard(Input::Keyboard::Space);
+        return;
+    }
+
+    if (this->sim->platform_ui->IsKeyPressed(GLFW_KEY_W))
+    {
+        this->control.SetKeyboard(Input::Keyboard::W);
+    }
+    else if (this->sim->platform_ui->IsKeyPressed(GLFW_KEY_S))
+    {
+        this->control.SetKeyboard(Input::Keyboard::S);
+    }
+    else if (this->sim->platform_ui->IsKeyPressed(GLFW_KEY_A))
+    {
+        this->control.SetKeyboard(Input::Keyboard::A);
+    }
+    else if (this->sim->platform_ui->IsKeyPressed(GLFW_KEY_D))
+    {
+        this->control.SetKeyboard(Input::Keyboard::D);
+    }
+    else if (this->sim->platform_ui->IsKeyPressed(GLFW_KEY_Q))
+    {
+        this->control.SetKeyboard(Input::Keyboard::Q);
+    }
+    else if (this->sim->platform_ui->IsKeyPressed(GLFW_KEY_E))
+    {
+        this->control.SetKeyboard(Input::Keyboard::E);
+    }
 }
 
 void RL_Sim::SetupSysJoystick(const std::string& device, int bits)
@@ -388,18 +496,7 @@ std::vector<float> RL_Sim::Forward()
     }
 
     std::vector<float> clamped_obs = this->ComputeObservation();
-
-    std::vector<float> actions;
-    if (this->params.Get<std::vector<int>>("observations_history").size() != 0)
-    {
-        this->history_obs_buf.insert(clamped_obs);
-        this->history_obs = this->history_obs_buf.get_obs_vec(this->params.Get<std::vector<int>>("observations_history"));
-        actions = this->model->forward({this->history_obs});
-    }
-    else
-    {
-        actions = this->model->forward({clamped_obs});
-    }
+    std::vector<float> actions = this->RunPolicyInference(clamped_obs);
 
     if (!this->params.Get<std::vector<float>>("clip_actions_upper").empty() && !this->params.Get<std::vector<float>>("clip_actions_lower").empty())
     {

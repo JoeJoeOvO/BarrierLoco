@@ -7,6 +7,11 @@
 
 go2w/robot_lab:
   model_name: "policy.onnx"
+  recurrent: true
+  policy_input_name: "obs"
+  policy_output_name: "actions"
+  recurrent_hidden_input_name: "h_in"
+  recurrent_hidden_output_name: "h_out"
   num_observations: 53
   observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
 
@@ -48,3 +53,5 @@ go2w/robot_lab:
   dof_pos_scale: 1.0
   dof_vel_scale: 0.05
   commands_scale: [1.0, 1.0, 1.0]
+  command_clip_lower: [-1.5, -0.1, -1.5]
+  command_clip_upper: [1.5, 0.1, 1.5]

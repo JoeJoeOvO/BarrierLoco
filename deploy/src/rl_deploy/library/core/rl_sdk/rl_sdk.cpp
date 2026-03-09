@@ -5,6 +5,24 @@
 
 #include "rl_sdk.hpp"
 
+namespace
+{
+
+size_t tensor_num_elements(const std::vector<int64_t>& shape)
+{
+    size_t num_elements = 1;
+    for (auto dim : shape)
+    {
+        if (dim > 0)
+        {
+            num_elements *= static_cast<size_t>(dim);
+        }
+    }
+    return num_elements;
+}
+
+} // namespace
+
 void RL::StateController(const RobotState<float>* state, RobotCommand<float>* command)
 {
     auto updateState = [&](std::shared_ptr<FSMState> statePtr)
@@ -58,6 +76,15 @@ void RL::StateController(const RobotState<float>* state, RobotCommand<float>* co
     {
         this->control.navigation_mode = !this->control.navigation_mode;
         std::cout << std::endl << LOGGER::INFO << "Navigation mode: " << (this->control.navigation_mode ? "ON" : "OFF") << std::endl;
+    }
+
+    const auto command_clip_lower = this->params.Get<std::vector<float>>("command_clip_lower");
+    const auto command_clip_upper = this->params.Get<std::vector<float>>("command_clip_upper");
+    if (command_clip_lower.size() == 3 && command_clip_upper.size() == 3)
+    {
+        this->control.x = std::clamp(this->control.x, command_clip_lower[0], command_clip_upper[0]);
+        this->control.y = std::clamp(this->control.y, command_clip_lower[1], command_clip_upper[1]);
+        this->control.yaw = std::clamp(this->control.yaw, command_clip_lower[2], command_clip_upper[2]);
     }
 }
 
@@ -251,6 +278,157 @@ void RL::InitRL(std::string robot_config_path)
     {
         throw std::runtime_error("Failed to load model from: " + model_path);
     }
+
+    this->InitPolicyState();
+}
+
+std::vector<float> RL::RunPolicyInference(const std::vector<float>& clamped_obs)
+{
+    std::vector<float> policy_obs = clamped_obs;
+    if (!this->params.Get<std::vector<int>>("observations_history").empty())
+    {
+        this->history_obs_buf.insert(clamped_obs);
+        policy_obs = this->history_obs_buf.get_obs_vec(this->params.Get<std::vector<int>>("observations_history"));
+        this->history_obs = policy_obs;
+    }
+
+    if (!this->recurrent_policy)
+    {
+        return this->model->forward({policy_obs});
+    }
+
+    std::vector<std::vector<float>> inputs(this->model->get_input_names().size());
+    inputs[this->policy_input_index] = policy_obs;
+    inputs[this->recurrent_hidden_input_index] = this->recurrent_hidden_state;
+
+    auto outputs = this->model->forward_outputs(inputs);
+    if (outputs.size() <= this->action_output_index || outputs.size() <= this->recurrent_hidden_output_index)
+    {
+        throw std::runtime_error("Recurrent policy outputs are incomplete");
+    }
+
+    this->recurrent_hidden_state = outputs[this->recurrent_hidden_output_index];
+    return outputs[this->action_output_index];
+}
+
+void RL::ResetPolicyState()
+{
+    std::fill(this->recurrent_hidden_state.begin(), this->recurrent_hidden_state.end(), 0.0f);
+
+    const auto& observations_history = this->params.Get<std::vector<int>>("observations_history");
+    if (!observations_history.empty())
+    {
+        int history_length = *std::max_element(observations_history.begin(), observations_history.end()) + 1;
+        this->history_obs_buf = ObservationBuffer(1, this->obs_dims, history_length, this->params.Get<std::string>("observations_history_priority"));
+        this->history_obs.clear();
+    }
+}
+
+void RL::InitPolicyState()
+{
+    this->recurrent_policy = this->params.Get<bool>("recurrent", false);
+    this->policy_input_index = 0;
+    this->action_output_index = 0;
+    this->recurrent_hidden_input_index = 0;
+    this->recurrent_hidden_output_index = 0;
+    this->recurrent_hidden_state.clear();
+
+    if (!this->recurrent_policy)
+    {
+        return;
+    }
+
+    auto input_names = this->model->get_input_names();
+    auto output_names = this->model->get_output_names();
+    auto input_shapes = this->model->get_input_shapes();
+    auto output_shapes = this->model->get_output_shapes();
+
+    if (input_names.empty() || output_names.empty() || input_shapes.empty() || output_shapes.empty())
+    {
+        throw std::runtime_error("Recurrent policy requires model I/O metadata");
+    }
+    if (input_names.size() != 2 || output_names.size() != 2)
+    {
+        throw std::runtime_error(
+            "Current recurrent deploy adapter supports GRU-style ONNX only (2 inputs / 2 outputs)"
+        );
+    }
+
+    this->policy_input_index = FindModelNodeIndex(
+        input_names,
+        this->params.Get<std::string>("policy_input_name", ""),
+        "obs",
+        "input"
+    );
+    this->recurrent_hidden_input_index = FindModelNodeIndex(
+        input_names,
+        this->params.Get<std::string>("recurrent_hidden_input_name", ""),
+        "h_in",
+        "input"
+    );
+    this->action_output_index = FindModelNodeIndex(
+        output_names,
+        this->params.Get<std::string>("policy_output_name", ""),
+        "actions",
+        "output"
+    );
+    this->recurrent_hidden_output_index = FindModelNodeIndex(
+        output_names,
+        this->params.Get<std::string>("recurrent_hidden_output_name", ""),
+        "h_out",
+        "output"
+    );
+
+    if (input_shapes.size() <= this->recurrent_hidden_input_index)
+    {
+        throw std::runtime_error("Recurrent hidden input shape is missing");
+    }
+
+    this->recurrent_hidden_state.assign(
+        tensor_num_elements(input_shapes[this->recurrent_hidden_input_index]),
+        0.0f
+    );
+}
+
+size_t RL::FindModelNodeIndex(
+    const std::vector<std::string>& names,
+    const std::string& configured_name,
+    const std::string& fallback_name,
+    const std::string& node_kind
+) const
+{
+    auto match_name = [&](const std::string& target_name) -> size_t
+    {
+        auto it = std::find(names.begin(), names.end(), target_name);
+        if (it != names.end())
+        {
+            return static_cast<size_t>(std::distance(names.begin(), it));
+        }
+        return names.size();
+    };
+
+    if (!configured_name.empty())
+    {
+        size_t index = match_name(configured_name);
+        if (index != names.size())
+        {
+            return index;
+        }
+        throw std::runtime_error("Configured " + node_kind + " node not found: " + configured_name);
+    }
+
+    size_t fallback_index = match_name(fallback_name);
+    if (fallback_index != names.size())
+    {
+        return fallback_index;
+    }
+
+    if (names.size() == 1)
+    {
+        return 0;
+    }
+
+    throw std::runtime_error("Unable to infer " + node_kind + " node: " + fallback_name);
 }
 
 void RL::ComputeOutput(const std::vector<float> &actions, std::vector<float> &output_dof_pos, std::vector<float> &output_dof_vel, std::vector<float> &output_dof_tau)

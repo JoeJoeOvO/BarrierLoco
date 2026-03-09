@@ -191,6 +191,7 @@ public:
     void Exit() override
     {
         rl.rl_init_done = false;
+        rl.ResetPolicyState();
     }
 
     std::string CheckChange() override

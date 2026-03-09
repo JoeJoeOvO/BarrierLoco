@@ -22,6 +22,8 @@
 namespace mujoco {
 class PlatformUIAdapter {
  public:
+  using EventInterceptor = bool (*)(mjuiState*);
+
   virtual ~PlatformUIAdapter() = default;
 
   inline mjuiState& state() { return state_; }
@@ -32,6 +34,10 @@ class PlatformUIAdapter {
 
   inline void SetEventCallback(void (*event_callback)(mjuiState*)) {
     event_callback_ = event_callback;
+  }
+
+  inline void SetEventInterceptor(EventInterceptor event_interceptor) {
+    event_interceptor_ = event_interceptor;
   }
 
   inline void SetLayoutCallback(void (*layout_callback)(mjuiState*)) {
@@ -64,6 +70,7 @@ class PlatformUIAdapter {
   virtual bool IsAltKeyPressed() const = 0;
   virtual bool IsCtrlKeyPressed() const = 0;
   virtual bool IsShiftKeyPressed() const = 0;
+  virtual bool IsKeyPressed(int key) const = 0;
 
   virtual bool IsMouseButtonDownEvent(int act) const = 0;
   virtual bool IsKeyDownEvent(int act) const = 0;
@@ -87,6 +94,7 @@ class PlatformUIAdapter {
   mjuiState state_;
   int last_key_;
   void (*event_callback_)(mjuiState*);
+  EventInterceptor event_interceptor_ = nullptr;
   void (*layout_callback_)(mjuiState*);
 
   mjrContext con_;

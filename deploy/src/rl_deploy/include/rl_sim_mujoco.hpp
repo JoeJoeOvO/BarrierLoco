@@ -25,8 +25,10 @@
 #include <fstream>
 #include <stdexcept>
 #include <memory>
+#include <unordered_map>
 
 #include <mujoco/mujoco.h>
+#include <mujoco/mjui.h>
 #include "joystick.hh"
 #include "mujoco_utils.hpp"
 
@@ -66,6 +68,8 @@ private:
     void SetCommand(const RobotCommand<float> *command) override;
     void RunModel();
     void RobotControl();
+    void WindowKeyboardInterface();
+    static bool MujocoEventInterceptor(mjuiState* state);
 
     // loop
     std::shared_ptr<LoopFunc> loop_keyboard;
@@ -101,6 +105,7 @@ private:
     std::map<std::string, float> joint_positions;
     std::map<std::string, float> joint_velocities;
     std::map<std::string, float> joint_efforts;
+    std::unordered_map<int, Button> window_key_buttons;
     void StartJointController(const std::string& ros_namespace, const std::vector<std::string>& names);
 };
 

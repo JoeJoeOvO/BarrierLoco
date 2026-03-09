@@ -15,6 +15,24 @@
 namespace InferenceRuntime
 {
 
+namespace
+{
+
+int64_t get_num_elements(const std::vector<int64_t>& shape)
+{
+    int64_t num_elements = 1;
+    for (auto dim : shape)
+    {
+        if (dim > 0)
+        {
+            num_elements *= dim;
+        }
+    }
+    return num_elements;
+}
+
+} // namespace
+
 // ============================================================================
 // TorchModel Implementation
 // ============================================================================
@@ -175,7 +193,53 @@ bool ONNXModel::load(const std::string& model_path)
     }
 }
 
+std::vector<std::string> ONNXModel::get_input_names() const
+{
+#ifdef USE_ONNX
+    return input_node_names_;
+#else
+    return {};
+#endif
+}
+
+std::vector<std::string> ONNXModel::get_output_names() const
+{
+#ifdef USE_ONNX
+    return output_node_names_;
+#else
+    return {};
+#endif
+}
+
+std::vector<std::vector<int64_t>> ONNXModel::get_input_shapes() const
+{
+#ifdef USE_ONNX
+    return input_shapes_;
+#else
+    return {};
+#endif
+}
+
+std::vector<std::vector<int64_t>> ONNXModel::get_output_shapes() const
+{
+#ifdef USE_ONNX
+    return output_shapes_;
+#else
+    return {};
+#endif
+}
+
 std::vector<float> ONNXModel::forward(const std::vector<std::vector<float>>& inputs)
+{
+    auto outputs = forward_outputs(inputs);
+    if (outputs.empty())
+    {
+        throw std::runtime_error("No outputs from ONNX model");
+    }
+    return outputs[0];
+}
+
+std::vector<std::vector<float>> ONNXModel::forward_outputs(const std::vector<std::vector<float>>& inputs)
 {
     if (!loaded_)
     {
@@ -185,38 +249,66 @@ std::vector<float> ONNXModel::forward(const std::vector<std::vector<float>>& inp
 #ifdef USE_ONNX
     try
     {
-        // Create memory info
-        Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        if (inputs.size() != input_node_names_.size())
+        {
+            throw std::runtime_error(
+                "ONNX inference received " + std::to_string(inputs.size()) + " inputs, expected " +
+                std::to_string(input_node_names_.size())
+            );
+        }
 
-        // Get input (use first input only)
-        const auto& input = inputs[0];
-        auto input_shape = session_->GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+        std::vector<Ort::Value> input_tensors;
+        input_tensors.reserve(inputs.size());
+        std::vector<const char*> input_names;
+        input_names.reserve(input_node_names_.size());
 
-        // Create input tensor
-        auto input_tensor = Ort::Value::CreateTensor<float>(
-            memory_info,
-            const_cast<float*>(input.data()),
-            input.size(),
-            input_shape.data(),
-            input_shape.size()
-        );
+        for (size_t i = 0; i < inputs.size(); ++i)
+        {
+            const auto& input = inputs[i];
+            const auto& input_shape = input_shapes_[i];
+            const int64_t expected_elements = get_num_elements(input_shape);
+            if (expected_elements != static_cast<int64_t>(input.size()))
+            {
+                throw std::runtime_error(
+                    "Input '" + input_node_names_[i] + "' expects " + std::to_string(expected_elements) +
+                    " elements, got " + std::to_string(input.size())
+                );
+            }
 
-        // Prepare input/output names
-        const char* input_names[] = {input_node_names_[0].c_str()};
-        const char* output_names[] = {output_node_names_[0].c_str()};
+            input_tensors.push_back(Ort::Value::CreateTensor<float>(
+                memory_info_,
+                const_cast<float*>(input.data()),
+                input.size(),
+                input_shape.data(),
+                input_shape.size()
+            ));
+            input_names.push_back(input_node_names_[i].c_str());
+        }
+
+        std::vector<const char*> output_names;
+        output_names.reserve(output_node_names_.size());
+        for (const auto& output_name : output_node_names_)
+        {
+            output_names.push_back(output_name.c_str());
+        }
 
         // Execute inference
         auto outputs = session_->Run(
             Ort::RunOptions{nullptr},
-            input_names,
-            &input_tensor,
-            1,
-            output_names,
-            1
+            input_names.data(),
+            input_tensors.data(),
+            input_tensors.size(),
+            output_names.data(),
+            output_names.size()
         );
 
-        // Extract output data
-        return extract_output_data(outputs);
+        std::vector<std::vector<float>> output_vectors;
+        output_vectors.reserve(outputs.size());
+        for (const auto& output : outputs)
+        {
+            output_vectors.push_back(extract_tensor_data(output));
+        }
+        return output_vectors;
     }
     catch (const std::exception& e)
     {
@@ -303,21 +395,17 @@ std::vector<float> ONNXModel::extract_output_data(const std::vector<Ort::Value>&
         throw std::runtime_error("No outputs from ONNX model");
     }
 
-    // Get first output tensor
-    auto& output = outputs[0];
+    return extract_tensor_data(outputs[0]);
+}
+
+std::vector<float> ONNXModel::extract_tensor_data(const Ort::Value& output)
+{
     float* output_data = const_cast<float*>(output.GetTensorData<float>());
 
     // Calculate total number of output elements
     auto output_shape = output.GetTensorTypeAndShapeInfo().GetShape();
 
-    int64_t num_elements = 1;
-    for (auto dim : output_shape)
-    {
-        if (dim > 0)
-        {
-            num_elements *= dim;
-        }
-    }
+    int64_t num_elements = get_num_elements(output_shape);
 
     // Copy output data to vector
     std::vector<float> result(output_data, output_data + num_elements);

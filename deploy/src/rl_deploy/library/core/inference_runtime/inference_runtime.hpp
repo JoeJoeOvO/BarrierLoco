@@ -55,10 +55,52 @@ public:
     virtual std::vector<float> forward(const std::vector<std::vector<float>>& inputs) = 0;
 
     /**
+     * @brief Forward inference returning all model outputs.
+     * @param inputs Vector of input data vectors ordered by model input index.
+     * @return All model outputs ordered by model output index.
+     */
+    virtual std::vector<std::vector<float>> forward_outputs(const std::vector<std::vector<float>>& inputs)
+    {
+        return {forward(inputs)};
+    }
+
+    /**
      * @brief Get model type string
      * @return Model type ("torch" or "onnx")
      */
     virtual std::string get_model_type() const = 0;
+
+    /**
+     * @brief Get input node names if available.
+     */
+    virtual std::vector<std::string> get_input_names() const
+    {
+        return {};
+    }
+
+    /**
+     * @brief Get output node names if available.
+     */
+    virtual std::vector<std::string> get_output_names() const
+    {
+        return {};
+    }
+
+    /**
+     * @brief Get input tensor shapes if available.
+     */
+    virtual std::vector<std::vector<int64_t>> get_input_shapes() const
+    {
+        return {};
+    }
+
+    /**
+     * @brief Get output tensor shapes if available.
+     */
+    virtual std::vector<std::vector<int64_t>> get_output_shapes() const
+    {
+        return {};
+    }
 };
 
 /**
@@ -132,7 +174,12 @@ public:
     bool load(const std::string& model_path) override;
     bool is_loaded() const override { return loaded_; }
     std::vector<float> forward(const std::vector<std::vector<float>>& inputs) override;
+    std::vector<std::vector<float>> forward_outputs(const std::vector<std::vector<float>>& inputs) override;
     std::string get_model_type() const override { return "onnx"; }
+    std::vector<std::string> get_input_names() const override;
+    std::vector<std::string> get_output_names() const override;
+    std::vector<std::vector<int64_t>> get_input_shapes() const override;
+    std::vector<std::vector<int64_t>> get_output_shapes() const override;
 
 private:
 #ifdef USE_ONNX
@@ -147,6 +194,13 @@ private:
      * @return Extracted data vector
      */
     std::vector<float> extract_output_data(const std::vector<Ort::Value>& outputs);
+
+    /**
+     * @brief Extract data from one ONNX tensor output.
+     * @param output Single ONNX inference output tensor.
+     * @return Extracted data vector.
+     */
+    std::vector<float> extract_tensor_data(const Ort::Value& output);
 #endif
 };
 

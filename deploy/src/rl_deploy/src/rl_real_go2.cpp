@@ -273,18 +273,7 @@ std::vector<float> RL_Real::Forward()
     }
 
     std::vector<float> clamped_obs = this->ComputeObservation();
-
-    std::vector<float> actions;
-    if (!this->params.Get<std::vector<int>>("observations_history").empty())
-    {
-        this->history_obs_buf.insert(clamped_obs);
-        this->history_obs = this->history_obs_buf.get_obs_vec(this->params.Get<std::vector<int>>("observations_history"));
-        actions = this->model->forward({this->history_obs});
-    }
-    else
-    {
-        actions = this->model->forward({clamped_obs});
-    }
+    std::vector<float> actions = this->RunPolicyInference(clamped_obs);
 
     if (!this->params.Get<std::vector<float>>("clip_actions_upper").empty() && !this->params.Get<std::vector<float>>("clip_actions_lower").empty())
     {

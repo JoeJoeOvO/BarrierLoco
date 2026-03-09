@@ -10,10 +10,10 @@ from itertools import chain
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from rsl_rl.modules import ActorCritic, ActorCriticCNN, ActorCriticRecurrent
+from rsl_rl.modules import ActorCritic, ActorCriticCNN, ActorCriticRecurrent, DecoderCollection
 from rsl_rl.modules.rnd import RandomNetworkDistillation
 from rsl_rl.storage import RolloutStorage
-from rsl_rl.utils import resolve_callable
+from rsl_rl.utils import resolve_callable, unpad_trajectories
 from tensordict import TensorDict
 
 
@@ -45,6 +45,8 @@ class PPO:
         rnd_cfg: dict | None = None,
         # Symmetry parameters
         symmetry_cfg: dict | None = None,
+        # Decoder parameters
+        decoder_cfg: dict | None = None,
         # Distributed training parameters
         multi_gpu_cfg: dict | None = None,
     ) -> None:
@@ -96,6 +98,22 @@ class PPO:
         else:
             self.symmetry = None
 
+        # Decoder components
+        self.actor_decoders = None
+        self.critic_decoders = None
+        self.actor_decoder_optimizer = None
+        self.critic_decoder_optimizer = None
+        self.actor_decoder_loss_weight = 0.0
+        self.critic_decoder_loss_weight = 0.0
+
+        if decoder_cfg is not None and policy.is_recurrent:
+            for decoder_type in ["actor", "critic"]:
+                branch_cfg = decoder_cfg.get(decoder_type)
+                if branch_cfg is not None:
+                    self._initialize_decoder(decoder_type, branch_cfg, policy)
+        elif decoder_cfg is not None and not policy.is_recurrent:
+            raise ValueError("Decoder auxiliary losses are only supported for recurrent policies.")
+
         # PPO components
         self.policy = policy
         self.policy.to(self.device)
@@ -121,6 +139,21 @@ class PPO:
         self.schedule = schedule
         self.learning_rate = learning_rate
         self.normalize_advantage_per_mini_batch = normalize_advantage_per_mini_batch
+
+    def _initialize_decoder(self, decoder_type: str, decoder_cfg: dict, policy: ActorCriticRecurrent) -> None:
+        if "configs" not in decoder_cfg:
+            raise ValueError(f"decoder_cfg['{decoder_type}'] must contain 'configs'")
+
+        memory_module = policy.memory_a if decoder_type == "actor" else policy.memory_c
+        decoders = DecoderCollection(
+            input_dim=memory_module.rnn.hidden_size,
+            decoder_configs=decoder_cfg["configs"],
+        ).to(self.device)
+        optimizer = optim.Adam(decoders.parameters(), lr=decoder_cfg.get("learning_rate", 1e-3))
+
+        setattr(self, f"{decoder_type}_decoders", decoders)
+        setattr(self, f"{decoder_type}_decoder_optimizer", optimizer)
+        setattr(self, f"{decoder_type}_decoder_loss_weight", decoder_cfg.get("loss_weight", 1.0))
 
     def act(self, obs: TensorDict) -> torch.Tensor:
         if self.policy.is_recurrent:
@@ -197,6 +230,9 @@ class PPO:
         mean_rnd_loss = 0 if self.rnd else None
         # Symmetry loss
         mean_symmetry_loss = 0 if self.symmetry else None
+        # Decoder losses
+        mean_actor_decoder_loss = 0 if self.actor_decoders else None
+        mean_critic_decoder_loss = 0 if self.critic_decoders else None
 
         # Get mini batch generator
         if self.policy.is_recurrent:
@@ -310,6 +346,31 @@ class PPO:
 
             loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
 
+            actor_decoder_loss = torch.tensor(0.0, device=self.device)
+            critic_decoder_loss = torch.tensor(0.0, device=self.device)
+
+            if self.actor_decoders or self.critic_decoders:
+                critic_obs_batch = self.policy.get_critic_obs(obs_batch)
+                target_observations = unpad_trajectories(critic_obs_batch, masks_batch)
+
+                if self.actor_decoders:
+                    actor_hidden_states = self.policy.hidden_a.squeeze(0)
+                    actor_decoder_result = self.actor_decoders.forward_and_compute_losses(
+                        hidden_states=actor_hidden_states,
+                        target_observations=target_observations,
+                    )
+                    actor_decoder_loss = actor_decoder_result["loss"]
+                    loss = loss + self.actor_decoder_loss_weight * actor_decoder_loss
+
+                if self.critic_decoders:
+                    critic_hidden_states = self.policy.hidden_c.squeeze(0)
+                    critic_decoder_result = self.critic_decoders.forward_and_compute_losses(
+                        hidden_states=critic_hidden_states,
+                        target_observations=target_observations,
+                    )
+                    critic_decoder_loss = critic_decoder_result["loss"]
+                    loss = loss + self.critic_decoder_loss_weight * critic_decoder_loss
+
             # Symmetry loss
             if self.symmetry:
                 # Obtain the symmetric actions
@@ -358,8 +419,12 @@ class PPO:
                 mseloss = torch.nn.MSELoss()
                 rnd_loss = mseloss(predicted_embedding, target_embedding)
 
-            # Compute the gradients for PPO
+            # Compute the gradients for PPO and decoders
             self.optimizer.zero_grad()
+            if self.actor_decoder_optimizer:
+                self.actor_decoder_optimizer.zero_grad()
+            if self.critic_decoder_optimizer:
+                self.critic_decoder_optimizer.zero_grad()
             loss.backward()
             # Compute the gradients for RND
             if self.rnd:
@@ -373,6 +438,12 @@ class PPO:
             # Apply the gradients for PPO
             nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.optimizer.step()
+            if self.actor_decoder_optimizer:
+                nn.utils.clip_grad_norm_(self.actor_decoders.parameters(), self.max_grad_norm)
+                self.actor_decoder_optimizer.step()
+            if self.critic_decoder_optimizer:
+                nn.utils.clip_grad_norm_(self.critic_decoders.parameters(), self.max_grad_norm)
+                self.critic_decoder_optimizer.step()
             # Apply the gradients for RND
             if self.rnd_optimizer:
                 self.rnd_optimizer.step()
@@ -387,6 +458,11 @@ class PPO:
             # Symmetry loss
             if mean_symmetry_loss is not None:
                 mean_symmetry_loss += symmetry_loss.item()
+            # Decoder losses
+            if mean_actor_decoder_loss is not None:
+                mean_actor_decoder_loss += actor_decoder_loss.item()
+            if mean_critic_decoder_loss is not None:
+                mean_critic_decoder_loss += critic_decoder_loss.item()
 
         # Divide the losses by the number of updates
         num_updates = self.num_learning_epochs * self.num_mini_batches
@@ -397,6 +473,10 @@ class PPO:
             mean_rnd_loss /= num_updates
         if mean_symmetry_loss is not None:
             mean_symmetry_loss /= num_updates
+        if mean_actor_decoder_loss is not None:
+            mean_actor_decoder_loss /= num_updates
+        if mean_critic_decoder_loss is not None:
+            mean_critic_decoder_loss /= num_updates
 
         # Clear the storage
         self.storage.clear()
@@ -411,6 +491,10 @@ class PPO:
             loss_dict["rnd"] = mean_rnd_loss
         if self.symmetry:
             loss_dict["symmetry"] = mean_symmetry_loss
+        if self.actor_decoders:
+            loss_dict["actor_decoder"] = mean_actor_decoder_loss
+        if self.critic_decoders:
+            loss_dict["critic_decoder"] = mean_critic_decoder_loss
 
         return loss_dict
 
@@ -420,12 +504,23 @@ class PPO:
         model_params = [self.policy.state_dict()]
         if self.rnd:
             model_params.append(self.rnd.predictor.state_dict())
+        if self.actor_decoders:
+            model_params.append(self.actor_decoders.state_dict())
+        if self.critic_decoders:
+            model_params.append(self.critic_decoders.state_dict())
         # Broadcast the model parameters
         torch.distributed.broadcast_object_list(model_params, src=0)
         # Load the model parameters on all GPUs from source GPU
         self.policy.load_state_dict(model_params[0])
+        idx = 1
         if self.rnd:
-            self.rnd.predictor.load_state_dict(model_params[1])
+            self.rnd.predictor.load_state_dict(model_params[idx])
+            idx += 1
+        if self.actor_decoders:
+            self.actor_decoders.load_state_dict(model_params[idx])
+            idx += 1
+        if self.critic_decoders:
+            self.critic_decoders.load_state_dict(model_params[idx])
 
     def reduce_parameters(self) -> None:
         """Collect gradients from all GPUs and average them.
@@ -436,6 +531,10 @@ class PPO:
         grads = [param.grad.view(-1) for param in self.policy.parameters() if param.grad is not None]
         if self.rnd:
             grads += [param.grad.view(-1) for param in self.rnd.parameters() if param.grad is not None]
+        if self.actor_decoders:
+            grads += [param.grad.view(-1) for param in self.actor_decoders.parameters() if param.grad is not None]
+        if self.critic_decoders:
+            grads += [param.grad.view(-1) for param in self.critic_decoders.parameters() if param.grad is not None]
         all_grads = torch.cat(grads)
 
         # Average the gradients across all GPUs
@@ -446,6 +545,10 @@ class PPO:
         all_params = self.policy.parameters()
         if self.rnd:
             all_params = chain(all_params, self.rnd.parameters())
+        if self.actor_decoders:
+            all_params = chain(all_params, self.actor_decoders.parameters())
+        if self.critic_decoders:
+            all_params = chain(all_params, self.critic_decoders.parameters())
 
         # Update the gradients for all parameters with the reduced gradients
         offset = 0

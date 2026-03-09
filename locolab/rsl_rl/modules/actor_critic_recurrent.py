@@ -118,6 +118,9 @@ class ActorCriticRecurrent(nn.Module):
         # Disable args validation for speedup
         Normal.set_default_validate_args(False)
 
+        self.hidden_a = None
+        self.hidden_c = None
+
     @property
     def action_mean(self) -> torch.Tensor:
         return self.distribution.mean
@@ -164,14 +167,15 @@ class ActorCriticRecurrent(nn.Module):
     def act(self, obs: TensorDict, masks: torch.Tensor | None = None, hidden_state: HiddenState = None) -> torch.Tensor:
         obs = self.get_actor_obs(obs)
         obs = self.actor_obs_normalizer(obs)
-        out_mem = self.memory_a(obs, masks, hidden_state).squeeze(0)
-        self._update_distribution(out_mem)
+        self.hidden_a = self.memory_a(obs, masks, hidden_state)
+        self._update_distribution(self.hidden_a.squeeze(0))
         return self.distribution.sample()
 
     def act_inference(self, obs: TensorDict) -> torch.Tensor:
         obs = self.get_actor_obs(obs)
         obs = self.actor_obs_normalizer(obs)
-        out_mem = self.memory_a(obs).squeeze(0)
+        self.hidden_a = self.memory_a(obs)
+        out_mem = self.hidden_a.squeeze(0)
         if self.state_dependent_std:
             return self.actor(out_mem)[..., 0, :]
         else:
@@ -182,8 +186,8 @@ class ActorCriticRecurrent(nn.Module):
     ) -> torch.Tensor:
         obs = self.get_critic_obs(obs)
         obs = self.critic_obs_normalizer(obs)
-        out_mem = self.memory_c(obs, masks, hidden_state).squeeze(0)
-        return self.critic(out_mem)
+        self.hidden_c = self.memory_c(obs, masks, hidden_state)
+        return self.critic(self.hidden_c.squeeze(0))
 
     def get_actor_obs(self, obs: TensorDict) -> torch.Tensor:
         obs_list = [obs[obs_group] for obs_group in self.obs_groups["policy"]]
@@ -207,7 +211,7 @@ class ActorCriticRecurrent(nn.Module):
             critic_obs = self.get_critic_obs(obs)
             self.critic_obs_normalizer.update(critic_obs)
 
-    def load_state_dict(self, state_dict: dict, strict: bool = True) -> bool:
+    def load_state_dict(self, state_dict: dict, strict: bool = False) -> bool:
         """Load the parameters of the actor-critic model.
 
         Args:

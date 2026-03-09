@@ -16,6 +16,7 @@
 #include <memory>
 #include <fstream>
 #include <mutex>
+#include <cstddef>
 
 #include <yaml-cpp/yaml.h>
 #include "fsm.hpp"
@@ -213,10 +214,12 @@ public:
     // rl functions
     virtual std::vector<float> Forward() = 0;
     std::vector<float> ComputeObservation();
+    std::vector<float> RunPolicyInference(const std::vector<float>& clamped_obs);
     virtual void GetState(RobotState<float> *state) = 0;
     virtual void SetCommand(const RobotCommand<float> *command) = 0;
     void StateController(const RobotState<float> *state, RobotCommand<float> *command);
     void ComputeOutput(const std::vector<float> &actions, std::vector<float> &output_dof_pos, std::vector<float> &output_dof_vel, std::vector<float> &output_dof_tau);
+    void ResetPolicyState();
 
     // joint order swap functions
     std::vector<float> SwapToTraining(const std::vector<float> &sdk_order);   // SDK → Training
@@ -256,6 +259,12 @@ public:
 
     // rl module
     std::unique_ptr<InferenceRuntime::Model> model;
+    bool recurrent_policy = false;
+    size_t policy_input_index = 0;
+    size_t action_output_index = 0;
+    size_t recurrent_hidden_input_index = 0;
+    size_t recurrent_hidden_output_index = 0;
+    std::vector<float> recurrent_hidden_state;
     // output buffer
     std::vector<float> output_dof_tau;
     std::vector<float> output_dof_pos;
@@ -263,6 +272,15 @@ public:
 
     // thread safety
     std::mutex model_mutex;
+
+private:
+    void InitPolicyState();
+    size_t FindModelNodeIndex(
+        const std::vector<std::string>& names,
+        const std::string& configured_name,
+        const std::string& fallback_name,
+        const std::string& node_kind
+    ) const;
 };
 
 class RLFSMState : public FSMState

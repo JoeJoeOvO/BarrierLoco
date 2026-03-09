@@ -144,6 +144,14 @@ class OnPolicyRunner:
             saved_dict["rnd_state_dict"] = self.alg.rnd.state_dict()
             if self.alg.rnd_optimizer:
                 saved_dict["rnd_optimizer_state_dict"] = self.alg.rnd_optimizer.state_dict()
+        if self.alg.actor_decoders:
+            saved_dict["actor_decoders_state_dict"] = self.alg.actor_decoders.state_dict()
+            if self.alg.actor_decoder_optimizer:
+                saved_dict["actor_decoder_optimizer_state_dict"] = self.alg.actor_decoder_optimizer.state_dict()
+        if self.alg.critic_decoders:
+            saved_dict["critic_decoders_state_dict"] = self.alg.critic_decoders.state_dict()
+            if self.alg.critic_decoder_optimizer:
+                saved_dict["critic_decoder_optimizer_state_dict"] = self.alg.critic_decoder_optimizer.state_dict()
         torch.save(saved_dict, path)
 
         # Upload model to external logging services
@@ -156,6 +164,10 @@ class OnPolicyRunner:
         # Load RND model if used
         if self.alg_cfg["rnd_cfg"]:
             self.alg.rnd.load_state_dict(loaded_dict["rnd_state_dict"])
+        if self.alg.actor_decoders and "actor_decoders_state_dict" in loaded_dict:
+            self.alg.actor_decoders.load_state_dict(loaded_dict["actor_decoders_state_dict"])
+        if self.alg.critic_decoders and "critic_decoders_state_dict" in loaded_dict:
+            self.alg.critic_decoders.load_state_dict(loaded_dict["critic_decoders_state_dict"])
         # Load optimizer if used
         if load_optimizer and resumed_training:
             # Algorithm optimizer
@@ -163,10 +175,14 @@ class OnPolicyRunner:
             # RND optimizer if used
             if self.alg_cfg["rnd_cfg"]:
                 self.alg.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
+            if self.alg.actor_decoder_optimizer and "actor_decoder_optimizer_state_dict" in loaded_dict:
+                self.alg.actor_decoder_optimizer.load_state_dict(loaded_dict["actor_decoder_optimizer_state_dict"])
+            if self.alg.critic_decoder_optimizer and "critic_decoder_optimizer_state_dict" in loaded_dict:
+                self.alg.critic_decoder_optimizer.load_state_dict(loaded_dict["critic_decoder_optimizer_state_dict"])
         # Load current learning iteration
         if resumed_training:
             self.current_learning_iteration = loaded_dict["iter"]
-        return loaded_dict["infos"]
+        return loaded_dict.get("infos")
 
     def get_inference_policy(self, device: str | None = None) -> callable:
         self.eval_mode()  # Switch to evaluation mode (e.g. for dropout)
@@ -177,6 +193,10 @@ class OnPolicyRunner:
     def train_mode(self) -> None:
         # PPO
         self.alg.policy.train()
+        if self.alg.actor_decoders:
+            self.alg.actor_decoders.train()
+        if self.alg.critic_decoders:
+            self.alg.critic_decoders.train()
         # RND
         if self.alg_cfg["rnd_cfg"]:
             self.alg.rnd.train()
@@ -184,6 +204,10 @@ class OnPolicyRunner:
     def eval_mode(self) -> None:
         # PPO
         self.alg.policy.eval()
+        if self.alg.actor_decoders:
+            self.alg.actor_decoders.eval()
+        if self.alg.critic_decoders:
+            self.alg.critic_decoders.eval()
         # RND
         if self.alg_cfg["rnd_cfg"]:
             self.alg.rnd.eval()
@@ -261,10 +285,8 @@ class OnPolicyRunner:
                 "`critic_obs_normalization` as part of the `policy` configuration instead.",
                 DeprecationWarning,
             )
-            if self.policy_cfg.get("actor_obs_normalization") is None:
-                self.policy_cfg["actor_obs_normalization"] = self.cfg["empirical_normalization"]
-            if self.policy_cfg.get("critic_obs_normalization") is None:
-                self.policy_cfg["critic_obs_normalization"] = self.cfg["empirical_normalization"]
+            self.policy_cfg["actor_obs_normalization"] = self.cfg["empirical_normalization"]
+            self.policy_cfg["critic_obs_normalization"] = self.cfg["empirical_normalization"]
 
         # Initialize the policy
         actor_critic_class = resolve_callable(self.policy_cfg.pop("class_name"))
