@@ -21,7 +21,11 @@ import cli_args  # isort: skip
 # Structure: project_root/locolab/scripts/locomotion/train.py
 # We need to add project_root to sys.path
 project_root = pathlib.Path(__file__).parents[3]
+locolab_root = pathlib.Path(__file__).parents[2]
+logs_root = locolab_root / "logs"
 sys.path.append(str(project_root))
+# Prefer local rsl_rl package in this repo over any globally installed one.
+sys.path.insert(0, str(locolab_root))
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
@@ -83,8 +87,7 @@ def main():
     agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
 
     # specify directory for logging experiments
-    log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
-    log_root_path = os.path.abspath(log_root_path)
+    log_root_path = str(logs_root / "rsl_rl" / agent_cfg.experiment_name)
     print(f"[INFO] Loading experiment from directory: {log_root_path}")
     if args_cli.use_pretrained_checkpoint:
         resume_path = get_published_pretrained_checkpoint("rsl_rl", args_cli.task)
