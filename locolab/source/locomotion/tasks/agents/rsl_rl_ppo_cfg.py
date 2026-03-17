@@ -145,8 +145,8 @@ class RecurrentDecoderPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     obs_groups = {"policy": ["policy"], "critic": ["critic"]}
     policy = RslRlPpoActorCriticRecurrentCfg(
         init_noise_std=1.0,
-        actor_obs_normalization=False,
-        critic_obs_normalization=False,
+        actor_obs_normalization=True,
+        critic_obs_normalization=True,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
@@ -161,7 +161,7 @@ class RecurrentDecoderPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         entropy_coef=0.01,
         num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=1.0e-5,
+        learning_rate=1.0e-4,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
@@ -211,3 +211,4 @@ class Go2WFlatRnnDecoderPPORunnerCfg(RecurrentDecoderPPORunnerCfg):
 class Go2WRoughRnnDecoderPPORunnerCfg(RecurrentDecoderPPORunnerCfg):
     def __post_init__(self) -> None:
         self.experiment_name = "omnibot_go2w_rough_rnn_v0"
+        self.algorithm.desired_kl = 0.01

@@ -165,14 +165,37 @@ class LocomotionEventCfg:
         },
     )
 
+    randomize_joint_friction = EventTerm(
+        func=mdp.randomize_joint_parameters,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+            "friction_distribution_params": (0.5, 1.5),
+            "operation": "scale",
+            "distribution": "uniform",
+        },
+    )
+
+    randomize_actuator_gains = EventTerm(
+        func=mdp.randomize_actuator_gains,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+            "stiffness_distribution_params": (0.8, 1.2),
+            "damping_distribution_params": (0.8, 1.2),
+            "operation": "scale",
+            "distribution": "uniform",
+        },
+    )
+
     # reset
     base_external_force_torque = EventTerm(
         func=mdp.apply_external_force_torque,
         mode="reset",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-            "force_range": (0.0, 0.0),
-            "torque_range": (-0.0, 0.0),
+            "force_range": (-5.0, 5.0),
+            "torque_range": (-2.0, 2.0),
         },
     )
 
@@ -196,7 +219,7 @@ class LocomotionEventCfg:
         func=mdp.reset_joints_by_scale,
         mode="reset",
         params={
-            "position_range": (1.0, 1.0),
+            "position_range": (0.8, 1.2),
             "velocity_range": (-1.0, 1.0),
         },
     )
@@ -263,11 +286,21 @@ class LocomotionObservationsCfg:
             clip=(-100, 100),
             params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
         )
+        wheel_contact_state = ObsTerm(
+            func=mdp.wheel_contact_state,
+            clip=(0.0, 1.0),
+            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"), "force_threshold": 1.0},
+        )
 
         height_scanner = ObsTerm(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=(-1.0, 1.0),
+        )
+        terrain_height_stats = ObsTerm(
+            func=mdp.terrain_height_stats,
+            clip=(-1.0, 1.0),
+            params={"sensor_cfg": SceneEntityCfg("height_scanner"), "offset": 0.5},
         )
 
     policy: PolicyCfg = PolicyCfg()
@@ -293,12 +326,12 @@ class LocomotionRewardsCfg:
     track_lin_vel_xy = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
         weight=5.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
+        params={"command_name": "base_velocity", "std": math.sqrt(0.16)},
     )
     track_ang_vel_z = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
         weight=3.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
+        params={"command_name": "base_velocity", "std": math.sqrt(0.16)},
     )
 
     # -- base stability

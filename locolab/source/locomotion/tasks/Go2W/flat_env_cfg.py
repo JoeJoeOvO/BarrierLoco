@@ -127,7 +127,7 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
     )
     action_smoothness_legs = RewTerm(
         func=mdp.action_smoothness_penalty,
-        weight=-5e-3,
+        weight=-1e-2,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
 

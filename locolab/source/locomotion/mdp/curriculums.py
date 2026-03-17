@@ -36,8 +36,10 @@ def lin_vel_cmd_levels(
     )
 
     # Calculate normalized reward
-    steps_per_second = 1.0 / env.step_dt
-    max_reward_per_second = reward_term.weight * steps_per_second
+    # Note: _episode_sums stores weight * func() * dt per step, so avg_reward_per_second
+    # is already in units of weight * mean_func_value. The theoretical max is just weight
+    # (when func() returns 1.0 every step).
+    max_reward_per_second = reward_term.weight
     normalized_reward = avg_reward_per_second / max_reward_per_second
 
     if env.common_step_counter % env.max_episode_length == 0:
@@ -83,9 +85,8 @@ def ang_vel_cmd_levels(
         torch.mean(env.reward_manager._episode_sums[reward_term_name][env_ids]) / env.max_episode_length_s
     )
 
-    # Calculate normalized reward
-    steps_per_second = 1.0 / env.step_dt
-    max_reward_per_second = reward_term.weight * steps_per_second
+    # Calculate normalized reward (see lin_vel_cmd_levels for detailed explanation)
+    max_reward_per_second = reward_term.weight
     normalized_reward = avg_reward_per_second / max_reward_per_second
 
     if env.common_step_counter % env.max_episode_length == 0:
@@ -105,11 +106,13 @@ class VelocityCurriculumWrapper:
 
     Uses accumulated success/failure counts across episodes to determine
     when to expand velocity command ranges, providing more stable progression.
+
+    Supports both linear and angular velocity curriculum via separate instances.
     """
 
     def __init__(self):
         self.succeeded_count = 0
-        self.__name__ = "velocity_cmd_curriculum"
+        self.__name__ = "lin_vel_cmd_curriculum"
 
     def __call__(
         self,
@@ -121,6 +124,7 @@ class VelocityCurriculumWrapper:
         step_size: float = 0.1,
         max_lin_vel_x: tuple[float, float] | None = None,
         max_lin_vel_y: tuple[float, float] | None = None,
+        max_ang_vel_z: tuple[float, float] | None = None,
     ) -> torch.Tensor:
         """Curriculum that gradually increases velocity command range based on tracking reward.
 
@@ -130,25 +134,30 @@ class VelocityCurriculumWrapper:
             command_name: Name of the velocity command term.
             reward_term_name: Name of the reward term to monitor.
             reward_threshold: Fraction of max reward that triggers range expansion (0-1).
+                This is compared against the normalized reward (0-1), where 1.0 means
+                perfect tracking.
             step_size: Amount to expand range in each direction per step.
             max_lin_vel_x: Maximum (min, max) limits for x velocity.
             max_lin_vel_y: Maximum (min, max) limits for y velocity.
+            max_ang_vel_z: Maximum (min, max) limits for z angular velocity.
 
         Returns:
-            Current maximum linear velocity x for logging.
+            Current maximum linear velocity x (or angular velocity z) for logging.
         """
         command_term = env.command_manager.get_term(command_name)
         ranges = command_term.cfg.ranges
 
         if len(env_ids) == 0:
+            if max_ang_vel_z is not None and max_lin_vel_x is None:
+                return torch.tensor(ranges.ang_vel_z[1], device=env.device)
             return torch.tensor(ranges.lin_vel_x[1], device=env.device)
 
         # Get reward per second for each completed episode
+        # Note: _episode_sums stores weight * func() * dt per step, so dividing by
+        # max_episode_length_s gives weight * mean_func_value. The theoretical max
+        # (perfect tracking) is just weight.
         reward_term = env.reward_manager.get_term_cfg(reward_term_name)
         reward_sum_per_sec = env.reward_manager._episode_sums[reward_term_name][env_ids] / env.max_episode_length_s
-
-        # threshold = weight * reward_threshold (weight 是每步最大奖励，reward_threshold 是比例)
-        # 例如 weight=5.0, threshold=0.8 -> 需要达到 4.0/秒
         threshold_value = reward_term.weight * reward_threshold
 
         # Update success count based on each environment's performance
@@ -168,10 +177,17 @@ class VelocityCurriculumWrapper:
                 lin_vel_y_max = min(ranges.lin_vel_y[1] + step_size, max_lin_vel_y[1])
                 ranges.lin_vel_y = (lin_vel_y_min, lin_vel_y_max)
 
+            if max_ang_vel_z is not None:
+                ang_vel_z_min = max(ranges.ang_vel_z[0] - step_size, max_ang_vel_z[0])
+                ang_vel_z_max = min(ranges.ang_vel_z[1] + step_size, max_ang_vel_z[1])
+                ranges.ang_vel_z = (ang_vel_z_min, ang_vel_z_max)
+
             # Reset counter after expansion
             self.succeeded_count = 0
 
+        if max_ang_vel_z is not None and max_lin_vel_x is None:
+            return torch.tensor(ranges.ang_vel_z[1], device=env.device)
         return torch.tensor(ranges.lin_vel_x[1], device=env.device)
 
 
-velocity_cmd_curriculum = VelocityCurriculumWrapper()
+lin_vel_cmd_curriculum = VelocityCurriculumWrapper()

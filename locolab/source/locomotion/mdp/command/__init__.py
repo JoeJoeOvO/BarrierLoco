@@ -1,1 +1,2 @@
 from .velocity_command import UniformVelocityCommandYawFrame
+from .velocity_command_cfg import UniformVelocityCommandYawFrameCfg

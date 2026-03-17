@@ -8,7 +8,7 @@ from isaaclab.managers import SceneEntityCfg
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation
     from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
-    from isaaclab.sensors import ContactSensor
+    from isaaclab.sensors import ContactSensor, RayCaster
 
 
 def gait_phase(env: ManagerBasedRLEnv, period: float) -> torch.Tensor:
@@ -39,3 +39,31 @@ def body_contact_force(env: ManagerBasedEnv, sensor_cfg: SceneEntityCfg) -> torc
     body_contact_force = body_contact_force.reshape(body_contact_force.shape[0], -1)
 
     return body_contact_force
+
+
+def wheel_contact_state(env: ManagerBasedEnv, sensor_cfg: SceneEntityCfg, force_threshold: float = 1.0) -> torch.Tensor:
+    """Binary wheel contact state for each configured body."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    contact_force_norm = torch.linalg.norm(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids], dim=-1)
+    return (contact_force_norm > force_threshold).float()
+
+
+def terrain_height_stats(env: ManagerBasedEnv, sensor_cfg: SceneEntityCfg, offset: float = 0.5) -> torch.Tensor:
+    """Compact terrain summary from height scan: mean, std, min, max."""
+    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
+    heights = sensor.data.pos_w[:, 2].unsqueeze(1) - sensor.data.ray_hits_w[..., 2] - offset
+    valid_mask = torch.isfinite(heights)
+    valid_count = valid_mask.sum(dim=1).clamp(min=1)
+
+    masked_heights = torch.where(valid_mask, heights, torch.zeros_like(heights))
+    mean_heights = masked_heights.sum(dim=1) / valid_count
+
+    centered = torch.where(valid_mask, heights - mean_heights.unsqueeze(1), torch.zeros_like(heights))
+    std_heights = torch.sqrt((centered.square().sum(dim=1) / valid_count).clamp(min=0.0))
+
+    min_heights = torch.where(valid_mask, heights, torch.full_like(heights, float("inf"))).min(dim=1).values
+    max_heights = torch.where(valid_mask, heights, torch.full_like(heights, float("-inf"))).max(dim=1).values
+    min_heights = torch.where(valid_mask.any(dim=1), min_heights, torch.zeros_like(min_heights))
+    max_heights = torch.where(valid_mask.any(dim=1), max_heights, torch.zeros_like(max_heights))
+
+    return torch.stack((mean_heights, std_heights, min_heights, max_heights), dim=1)
