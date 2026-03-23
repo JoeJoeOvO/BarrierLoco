@@ -326,12 +326,12 @@ class LocomotionRewardsCfg:
     track_lin_vel_xy = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
         weight=5.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.16)},
+        params={"command_name": "base_velocity", "std": math.sqrt(0.5)},
     )
     track_ang_vel_z = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
         weight=3.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.16)},
+        params={"command_name": "base_velocity", "std": math.sqrt(0.5)},
     )
 
     # -- base stability
