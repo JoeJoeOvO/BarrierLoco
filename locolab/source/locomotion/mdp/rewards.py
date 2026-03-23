@@ -125,6 +125,26 @@ def base_height_l2(
     return torch.square(height.mean(dim=1) - target_height)
 
 
+def base_height_tolerance(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    tolerance: float,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize base height deviation from target with a deadzone around the target height."""
+    from isaaclab.sensors import RayCaster
+
+    asset: RigidObject = env.scene[asset_cfg.name]
+    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
+
+    height = asset.data.root_pos_w[:, 2].unsqueeze(1) - sensor.data.ray_hits_w[:, :, 2]
+    height = torch.nan_to_num(height, nan=target_height, posinf=target_height, neginf=target_height)
+    mean_height = height.mean(dim=1)
+
+    return torch.clamp(torch.abs(mean_height - target_height) - tolerance, min=0.0)
+
+
 # ==============================================================================
 # REGULARIZATION REWARDS
 # Constraints for smooth and efficient behavior
@@ -161,37 +181,28 @@ def joint_position_penalty(
     stand_still_scale: float,
     velocity_threshold: float,
     ang_vel_threshold: float = 0.1,
+    moving_scale: float = 0.25,
 ) -> torch.Tensor:
-    """Penalize joint position error from default on the articulation.
+    """Penalize joint position error from default with command-based smooth gating.
 
-    Args:
-        env: The environment instance.
-        asset_cfg: Configuration for the robot asset with joint_ids to penalize.
-        stand_still_scale: Scale factor for penalty when standing still.
-        velocity_threshold: Linear velocity threshold below which standing still scale applies.
-        ang_vel_threshold: Angular velocity threshold. When |ang_vel_z| > threshold, penalty is reduced.
+    The penalty is strongest near zero command and decays smoothly as linear and angular
+    velocity commands increase.
     """
     asset: Articulation = env.scene[asset_cfg.name]
     cmd = env.command_manager.get_command("base_velocity")
     cmd_lin = torch.linalg.norm(cmd[:, :2], dim=1)
-    cmd_ang = torch.abs(cmd[:, 2])  # angular velocity command
-    body_vel = torch.linalg.norm(asset.data.root_lin_vel_b[:, :2], dim=1)
+    cmd_ang = torch.abs(cmd[:, 2])
 
-    # Compute joint position error
     joint_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
     default_pos = asset.data.default_joint_pos[:, asset_cfg.joint_ids]
-    reward = torch.linalg.norm(joint_pos - default_pos, dim=1)
-    # joint_names = [asset.joint_names[i] for i in asset_cfg.joint_ids]
-    # print(f"[joint_pos_penalty_stand_still] joint_ids: {asset_cfg.joint_ids}")
-    # print(f"[joint_pos_penalty_stand_still] joint_names: {joint_names}")      # Conditions:
-    # - If turning (ang_vel > threshold): normal penalty (not scaled)
-    # - If moving (lin_vel > 0 or body_vel > threshold): normal penalty
-    # - If standing still (no lin_vel, no ang_vel, no body motion): scaled penalty
-    is_turning = cmd_ang > ang_vel_threshold
-    is_moving = torch.logical_or(cmd_lin > 0.0, body_vel > velocity_threshold)
-    is_active = torch.logical_or(is_turning, is_moving)
+    joint_deviation = torch.linalg.norm(joint_pos - default_pos, dim=1)
 
-    return torch.where(is_active, reward, stand_still_scale * reward)
+    lin_gate = torch.clamp(1.0 - cmd_lin / velocity_threshold, min=0.0, max=1.0)
+    ang_gate = torch.clamp(1.0 - cmd_ang / ang_vel_threshold, min=0.0, max=1.0)
+    idle_gate = lin_gate * ang_gate
+
+    scale = moving_scale + (stand_still_scale - moving_scale) * idle_gate
+    return scale * joint_deviation
 
 
 """

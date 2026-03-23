@@ -5,6 +5,7 @@ from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg as Unoise
 
@@ -16,6 +17,7 @@ from locolab.source.locomotion.tasks.velocity_env_cfg import (
     LocomotionObservationsCfg,
     LocomotionRewardsCfg,
     LocomotionSceneCfg,
+    LocomotionTerminationsCfg,
 )
 
 # ==============================================================================
@@ -73,11 +75,12 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
     # ==========================================================================
 
     # -- base stability (additional)
-    base_height_l2 = RewTerm(
-        func=mdp.base_height_l2,
-        weight=-1.0,
+    base_height = RewTerm(
+        func=mdp.base_height_tolerance,
+        weight=-5.0,
         params={
             "target_height": 0.42,
+            "tolerance": 0.05,
             "sensor_cfg": SceneEntityCfg("height_scanner"),
         },
     )
@@ -89,8 +92,9 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
             "stand_still_scale": 2.0,
-            "velocity_threshold": 3,
-            "ang_vel_threshold": 0.2,  # 转向时不惩罚关节偏离
+            "moving_scale": 0.25,
+            "velocity_threshold": 0.5,
+            "ang_vel_threshold": 0.4,  # 转向时不惩罚关节偏离
         },
     )
     dof_acc_l2 = RewTerm(
@@ -214,6 +218,32 @@ class Go2WCurriculumCfg(LocomotionCurriculumCfg):
 
 
 # ==============================================================================
+# Go2W Terminations Configuration
+# ==============================================================================
+
+
+@configclass
+class Go2WFlatTerminationsCfg(LocomotionTerminationsCfg):
+    """Termination terms for Go2W wheel-legged robot."""
+
+    base_contact = DoneTerm(
+        func=mdp.DelayedIllegalContact,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_hip", ".*_thigh", ".*_calf", "base"]),
+            "threshold": 1.0,
+            "delay_steps": 25,
+        },
+    )
+    bad_orientation = DoneTerm(
+        func=mdp.DelayedBadOrientation,
+        params={
+            "limit_angle": 1.5,
+            "delay_steps": 25,
+        },
+    )
+
+
+# ==============================================================================
 # Go2W Flat Environment Configuration
 # ==============================================================================
 
@@ -226,6 +256,7 @@ class Go2WFlatEnvCfg(LocomotionEnvCfg):
     actions: Go2WActionsCfg = Go2WActionsCfg()
     observations: Go2WObservationsCfg = Go2WObservationsCfg()
     rewards: Go2WRewardsCfg = Go2WRewardsCfg()
+    terminations: Go2WFlatTerminationsCfg = Go2WFlatTerminationsCfg()
     curriculum: Go2WCurriculumCfg = Go2WCurriculumCfg()
 
 

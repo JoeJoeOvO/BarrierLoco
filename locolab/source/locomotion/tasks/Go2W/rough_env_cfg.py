@@ -84,8 +84,9 @@ class Go2WRoughRewardsCfg(Go2WRewardsCfg):
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_thigh_.*", ".*_calf_.*"]),
             "stand_still_scale": 2.0,
-            "velocity_threshold": 3,
-            "ang_vel_threshold": 0.2,
+            "moving_scale": 0.25,
+            "velocity_threshold": 0.5,
+            "ang_vel_threshold": 0.4,
         },
     )
     joint_pos_deviation_hip = RewTerm(
@@ -94,8 +95,9 @@ class Go2WRoughRewardsCfg(Go2WRewardsCfg):
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*"]),
             "stand_still_scale": 2.0,
-            "velocity_threshold": 3,
-            "ang_vel_threshold": 0.2,
+            "moving_scale": 0.25,
+            "velocity_threshold": 0.5,
+            "ang_vel_threshold": 0.4,
         },
     )
 

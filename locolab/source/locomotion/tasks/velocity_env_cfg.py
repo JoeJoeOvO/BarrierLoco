@@ -346,10 +346,20 @@ class LocomotionTerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     base_contact = DoneTerm(
-        func=mdp.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
+        func=mdp.DelayedIllegalContact,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"),
+            "threshold": 1.0,
+            "delay_steps": 5,
+        },
     )
-    bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": 1.0})
+    bad_orientation = DoneTerm(
+        func=mdp.DelayedBadOrientation,
+        params={
+            "limit_angle": 1.0,
+            "delay_steps": 5,
+        },
+    )
 
 
 @configclass
