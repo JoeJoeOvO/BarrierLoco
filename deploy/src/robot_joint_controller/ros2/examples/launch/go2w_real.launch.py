@@ -69,14 +69,16 @@ def generate_launch_description():
         output="screen",
     )
 
-    return LaunchDescription([
-        DeclareLaunchArgument(
-            "use_sim_time",
-            default_value="false",
-            description="Use simulation time",
-        ),
-        robot_state_publisher_node,
-        controller_manager_node,
-        joint_state_broadcaster_spawner,
-        robot_joint_controller_spawner,
-    ])
+    return LaunchDescription(
+        [
+            DeclareLaunchArgument(
+                "use_sim_time",
+                default_value="false",
+                description="Use simulation time",
+            ),
+            robot_state_publisher_node,
+            controller_manager_node,
+            joint_state_broadcaster_spawner,
+            robot_joint_controller_spawner,
+        ]
+    )
