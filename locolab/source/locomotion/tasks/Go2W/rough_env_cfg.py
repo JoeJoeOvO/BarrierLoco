@@ -75,31 +75,11 @@ class Go2WRoughCurriculumCfg(LocomotionCurriculumCfg):
 
 @configclass
 class Go2WRoughRewardsCfg(Go2WRewardsCfg):
-    """Reward terms for Go2W training on rough terrain."""
+    """Reward terms for Go2W training on rough terrain.
 
-    # 降低关节偏离惩罚，允许更大幅度抬腿
-    joint_pos_deviation = RewTerm(
-        func=mdp.joint_position_penalty,
-        weight=-0.2,  # 从 -1.0 降到 -0.2
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_thigh_.*", ".*_calf_.*"]),
-            "stand_still_scale": 2.0,
-            "moving_scale": 0.25,
-            "velocity_threshold": 0.5,
-            "ang_vel_threshold": 0.4,
-        },
-    )
-    joint_pos_deviation_hip = RewTerm(
-        func=mdp.joint_position_penalty,
-        weight=-1.5,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*"]),
-            "stand_still_scale": 2.0,
-            "moving_scale": 0.25,
-            "velocity_threshold": 0.5,
-            "ang_vel_threshold": 0.4,
-        },
-    )
+    joint_pos_deviation inherits from Go2WRewardsCfg (weight=-1.0, all leg joints).
+    Only adds feet_stumble on top.
+    """
 
     feet_stumble = RewTerm(
         func=mdp.feet_stumble,

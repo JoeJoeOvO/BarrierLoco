@@ -44,6 +44,9 @@ recordings/
 .DS_Store
 Thumbs.db
 
+# Research (local experiments and literature, not tracked)
+research/
+
 # Testing
 .pytest_cache/
 .coverage

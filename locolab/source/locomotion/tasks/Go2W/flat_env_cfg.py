@@ -88,13 +88,13 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
     # -- joint regularization
     joint_pos_deviation = RewTerm(
         func=mdp.joint_position_penalty,
-        weight=-1.0,
+        weight=-2.0,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
             "stand_still_scale": 2.0,
-            "moving_scale": 0.25,
+            "moving_scale": 1.0,  # 与 stand_still 一致：任何速度下腿都不动
             "velocity_threshold": 0.5,
-            "ang_vel_threshold": 0.4,  # 转向时不惩罚关节偏离
+            "ang_vel_threshold": 0.4,
         },
     )
     dof_acc_l2 = RewTerm(

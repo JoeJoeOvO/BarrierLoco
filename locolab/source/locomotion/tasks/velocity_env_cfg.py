@@ -326,24 +326,24 @@ class LocomotionRewardsCfg:
     # Wide std (sqrt(0.5)≈0.707): broad gradient landscape, guides exploration
     track_lin_vel_xy = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=3.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.5)},
+        weight=2.0,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     # Narrow std (sqrt(0.05)≈0.22): steep gradient near zero error, rewards precision
-    track_lin_vel_xy_precise = RewTerm(
+    track_lin_vel_xy_enhance = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=2.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.05)},
+        weight=1.0,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.02)},
     )
     track_ang_vel_z = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
         weight=2.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.5)},
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
-    track_ang_vel_z_precise = RewTerm(
+    track_ang_vel_z_enhance = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
         weight=1.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.05)},
+        params={"command_name": "base_velocity", "std": math.sqrt(0.02)},
     )
 
     # -- base stability
