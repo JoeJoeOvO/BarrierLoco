@@ -212,3 +212,5 @@ class Go2WRoughRnnDecoderPPORunnerCfg(RecurrentDecoderPPORunnerCfg):
     def __post_init__(self) -> None:
         self.experiment_name = "omnibot_go2w_rough_rnn_v0"
         self.algorithm.desired_kl = 0.01
+        self.logger = "wandb"
+        self.wandb_project = "omnibot-go2w"
