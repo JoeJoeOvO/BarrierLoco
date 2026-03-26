@@ -96,7 +96,7 @@ class Go2WRoughRewardsCfg(Go2WRewardsCfg):
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_foot"]),
             "asset_cfg": SceneEntityCfg("robot", body_names=[".*_foot"]),
-            "stumble_ratio": 2.5,
+            "stumble_ratio": 1.0,
             "target_height": 0.08,
         },
     )
