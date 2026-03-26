@@ -220,6 +220,41 @@ def feet_stumble(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Te
     return reward
 
 
+def feet_lift_on_stumble(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg,
+    stumble_ratio: float = 2.5,
+    target_height: float = 0.08,
+) -> torch.Tensor:
+    """当脚撞侧面（stumble）时，奖励该脚抬高到 target_height 以上。
+
+    逻辑：
+      1. 检测哪只脚正在 stumble（水平力 > stumble_ratio * 竖直力）
+      2. 只对这些脚，奖励其绝对高度超过 target_height 的部分
+      3. 高度信号比速度信号更稳定，策略可以学到"撞到后快速抬腿"
+
+    改动说明（vs 原版）：
+      - 奖励由 vel_z 改为 clamp(foot_height - target_height, min=0)
+      - stumble_ratio 从 4.0 降到 2.5，让 stumble 检测更容易触发
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    # stumble 检测：哪些脚撞了侧面 (N, num_feet)
+    forces_z = torch.abs(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2])
+    forces_xy = torch.linalg.norm(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :2], dim=2)
+    is_stumble = forces_xy > stumble_ratio * forces_z  # (N, num_feet)
+
+    # 脚的绝对高度（世界坐标 z）(N, num_feet)
+    foot_height = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+
+    # 只在 stumble 的脚上，奖励高于 target_height 的部分
+    lift_reward = torch.clamp(foot_height - target_height, min=0.0) * is_stumble.float()
+
+    return torch.sum(lift_reward, dim=1)
+
+
 def feet_height_body(
     env: ManagerBasedRLEnv,
     command_name: str,

@@ -89,15 +89,15 @@ class Go2WRoughRewardsCfg(Go2WRewardsCfg):
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_foot"])},
     )
 
-    # 撞到障碍侧面时，奖励脚向上抬起——与 feet_stumble 联动
+    # 撞到障碍侧面时，奖励脚抬高到 target_height 以上——高度信号比速度信号更稳定
     feet_lift_on_stumble = RewTerm(
         func=mdp.feet_lift_on_stumble,
         weight=10.0,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_foot"]),
             "asset_cfg": SceneEntityCfg("robot", body_names=[".*_foot"]),
-            "stumble_ratio": 4.0,
-            "lift_vel_scale": 1.0,
+            "stumble_ratio": 2.5,
+            "target_height": 0.08,
         },
     )
 
