@@ -178,13 +178,39 @@ class LocomotionEventCfg:
 
     randomize_actuator_gains = EventTerm(
         func=mdp.randomize_actuator_gains,
-        mode="startup",
+        # 改为 mode="reset"：每次 episode 重置时重新采样执行器刚度/阻尼，
+        # 增强对执行器参数不确定性的鲁棒性；distribution 改为 log_uniform
+        # 使得采样在对数尺度上均匀分布，参考 LocoLeggedWheel 配置。
+        mode="reset",
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
             "stiffness_distribution_params": (0.8, 1.2),
             "damping_distribution_params": (0.8, 1.2),
             "operation": "scale",
-            "distribution": "uniform",
+            "distribution": "log_uniform",
+        },
+    )
+
+    # 全身惯量随机化：startup 阶段对所有刚体的惯量对角分量做 scale (0.5, 1.5)，
+    # 提升策略对真实机器人惯量误差的鲁棒性，参考 LocoLeggedWheel 实现。
+    randomize_rigid_body_inertia = EventTerm(
+        func=mdp.randomize_rigid_body_inertia,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "inertia_distribution_params": (0.5, 1.5),
+            "operation": "scale",
+        },
+    )
+
+    # base CoM 位置随机化：startup 阶段对 base 质心位置在 xyz 方向各加 ±0.05m，
+    # 模拟真实机器人载荷偏心或装配误差，参考 LocoLeggedWheel 实现。
+    randomize_rigid_body_com = EventTerm(
+        func=mdp.randomize_rigid_body_com,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.05, 0.05)},
         },
     )
 
@@ -221,6 +247,24 @@ class LocomotionEventCfg:
         params={
             "position_range": (0.8, 1.2),
             "velocity_range": (-1.0, 1.0),
+        },
+    )
+
+    # 定期推力扰动：每 6~10 秒对机器人施加一次随机速度扰动，
+    # 模拟真实场景中的碰撞或外力干扰，提升策略抗扰动能力，参考 LocoLeggedWheel 实现。
+    push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(6.0, 10.0),
+        params={
+            "velocity_range": {
+                "x": (-0.5, 0.5),
+                "y": (-0.3, 0.3),
+                "z": (0.0, 0.0),
+                "roll": (0.0, 0.0),
+                "pitch": (0.0, 0.0),
+                "yaw": (0.0, 0.0),
+            },
         },
     )
 

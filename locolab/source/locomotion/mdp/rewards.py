@@ -45,8 +45,14 @@ def track_lin_vel_xy_yaw_frame_exp(
     std: float,
     command_name: str,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    use_gravity_gating: bool = False,
 ) -> torch.Tensor:
-    """Reward tracking of linear velocity commands (xy) in the gravity aligned robot frame using exponential kernel."""
+    """Reward tracking of linear velocity commands (xy) in the gravity aligned robot frame using exponential kernel.
+
+    Args:
+        use_gravity_gating: 若为 True，奖励乘以 -projected_gravity_b[:, 2]（机器人直立时≈1，
+            倾倒时趋近 0），防止倾倒状态下仍给予速度追踪奖励，参考 LocoLeggedWheel 实现。
+    """
     asset: RigidObject = env.scene[asset_cfg.name]
     # Transform velocity to yaw-aligned frame (gravity aligned, only yaw rotation)
     vel_yaw = math_utils.quat_apply_inverse(
@@ -55,7 +61,11 @@ def track_lin_vel_xy_yaw_frame_exp(
     lin_vel_error = torch.sum(
         torch.square(env.command_manager.get_command(command_name)[:, :2] - vel_yaw[:, :2]), dim=1
     )
-    return torch.exp(-lin_vel_error / std**2)
+    reward = torch.exp(-lin_vel_error / std**2)
+    # gravity gating：机器人倾倒时（projected_gravity_b[:, 2] → 0）速度奖励衰减至零
+    if use_gravity_gating:
+        reward *= -env.scene["robot"].data.projected_gravity_b[:, 2]
+    return reward
 
 
 def track_ang_vel_z_world_exp(
@@ -63,11 +73,21 @@ def track_ang_vel_z_world_exp(
     command_name: str,
     std: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    use_gravity_gating: bool = False,
 ) -> torch.Tensor:
-    """Reward tracking of angular velocity commands (yaw) in world frame using exponential kernel."""
+    """Reward tracking of angular velocity commands (yaw) in world frame using exponential kernel.
+
+    Args:
+        use_gravity_gating: 若为 True，奖励乘以 -projected_gravity_b[:, 2]，
+            防止倾倒状态下仍给予偏航速度奖励，参考 LocoLeggedWheel 实现。
+    """
     asset: RigidObject = env.scene[asset_cfg.name]
     ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_w[:, 2])
-    return torch.exp(-ang_vel_error / std**2)
+    reward = torch.exp(-ang_vel_error / std**2)
+    # gravity gating：机器人倾倒时速度追踪奖励衰减至零
+    if use_gravity_gating:
+        reward *= -env.scene["robot"].data.projected_gravity_b[:, 2]
+    return reward
 
 
 """

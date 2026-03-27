@@ -102,10 +102,15 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
         weight=-2.5e-7,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
+    dof_acc_l2_wheel = RewTerm(
+        func=mdp.joint_acc_l2,
+        weight=-2.5e-7,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_foot_.*"])},
+    )
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2,
         weight=-2e-5,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
     dof_vel_l2 = RewTerm(
         func=mdp.joint_vel_l2,
