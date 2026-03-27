@@ -196,7 +196,9 @@ def stand_still(
     """Penalize joint deviation from default when command is near zero."""
     asset: Articulation = env.scene[asset_cfg.name]
 
-    reward = torch.sum(torch.abs(asset.data.joint_pos - asset.data.default_joint_pos), dim=1)
+    joint_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
+    default_joint_pos = asset.data.default_joint_pos[:, asset_cfg.joint_ids]
+    reward = torch.sum(torch.abs(joint_pos - default_joint_pos), dim=1)
     cmd_norm = torch.norm(env.command_manager.get_command(command_name), dim=1)
     return reward * (cmd_norm < 0.1)
 
