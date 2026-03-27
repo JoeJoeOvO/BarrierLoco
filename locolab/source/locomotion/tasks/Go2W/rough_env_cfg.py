@@ -30,7 +30,7 @@ class Go2WRoughSceneCfg(Go2WSceneCfg):
     def __post_init__(self):
         self.terrain.terrain_type = "generator"
         self.terrain.terrain_generator = ROUGH_TERRAIN_CFG
-        self.terrain.max_init_terrain_level = 2
+        self.terrain.max_init_terrain_level = 5
 
 
 # ==============================================================================
@@ -99,53 +99,6 @@ class Go2WRoughRewardsCfg(Go2WRewardsCfg):
     - thigh/calf: moving_scale=0.2 (抬腿自由度更大，rough 地形穿越需要)
     Adds feet_stumble on top.
     """
-
-    feet_stumble = RewTerm(
-        func=mdp.feet_stumble,
-        weight=-1.5,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_foot"])},
-    )
-
-    # 地形自适应高度惩罚：rough 地形用 base_height_l2（无 deadzone，target 自动叠加地面高度）
-    # 替换继承自 flat 的 base_height_tolerance，参考 LocoLeggedWheel custom_base_height_l2
-    base_height = RewTerm(
-        func=mdp.base_height_l2,
-        weight=-5.0,
-        params={
-            "target_height": 0.42,
-            "sensor_cfg": SceneEntityCfg("height_scanner"),
-            "terrain_height_threshold": (-0.5, 0.5),
-        },
-    )
-
-    # Hip: 保持较强约束维持横向姿态稳定，移动时适度放松
-    joint_pos_deviation_hip = RewTerm(
-        func=mdp.joint_position_penalty,
-        weight=-2.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*"]),
-            "stand_still_scale": 2.0,
-            "moving_scale": 0.5,
-            "velocity_threshold": 0.5,
-            "ang_vel_threshold": 0.4,
-        },
-    )
-
-    # Thigh/Calf: 降低 moving 惩罚，允许抬腿和跨障碍
-    joint_pos_deviation_leg = RewTerm(
-        func=mdp.joint_position_penalty,
-        weight=-1.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_thigh_.*", ".*_calf_.*"]),
-            "stand_still_scale": 2.0,
-            "moving_scale": 0.2,
-            "velocity_threshold": 0.5,
-            "ang_vel_threshold": 0.4,
-        },
-    )
-
-    # 关闭继承自 flat 的 joint_pos_deviation（统一用上面两项替代）
-    joint_pos_deviation = None  # type: ignore[assignment]
 
 
 @configclass

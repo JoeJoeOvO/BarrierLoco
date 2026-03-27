@@ -84,27 +84,21 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
             "sensor_cfg": SceneEntityCfg("height_scanner"),
         },
     )
-
-    # -- joint regularization
-    joint_pos_deviation = RewTerm(
-        func=mdp.joint_position_penalty,
-        weight=-2.0,
+    stand_still = RewTerm(
+        func=mdp.stand_still,
+        weight=-1.0,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
-            "stand_still_scale": 2.0,
-            "moving_scale": 1.0,  # 与 stand_still 一致：任何速度下腿都不动
-            "velocity_threshold": 0.5,
-            "ang_vel_threshold": 0.4,
         },
     )
     dof_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2,
         weight=-2.5e-7,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
     dof_acc_l2_wheel = RewTerm(
         func=mdp.joint_acc_l2,
-        weight=-2.5e-9,
+        weight=-2.5e-8,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_foot_.*"])},
     )
     dof_torques_l2 = RewTerm(
@@ -234,16 +228,16 @@ class Go2WFlatTerminationsCfg(LocomotionTerminationsCfg):
     base_contact = DoneTerm(
         func=mdp.DelayedIllegalContact,
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_hip", ".*_thigh", ".*_calf", "base"]),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["base"]),
             "threshold": 1.0,
-            "delay_steps": 25,
+            "delay_steps": 5,
         },
     )
     bad_orientation = DoneTerm(
         func=mdp.DelayedBadOrientation,
         params={
             "limit_angle": 1.5,
-            "delay_steps": 25,
+            "delay_steps": 5,
         },
     )
 
