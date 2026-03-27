@@ -142,6 +142,9 @@ class RecurrentDecoderPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     save_interval = 500
     experiment_name = ""
     empirical_normalization = True
+    # 默认使用 wandb 记录训练曲线，所有子类均生效
+    logger = "wandb"
+    wandb_project = "omnibot-go2w"
     obs_groups = {"policy": ["policy"], "critic": ["critic"]}
     policy = RslRlPpoActorCriticRecurrentCfg(
         init_noise_std=1.0,
@@ -212,5 +215,3 @@ class Go2WRoughRnnDecoderPPORunnerCfg(RecurrentDecoderPPORunnerCfg):
     def __post_init__(self) -> None:
         self.experiment_name = "omnibot_go2w_rough_rnn_v0"
         self.algorithm.desired_kl = 0.01
-        self.logger = "wandb"
-        self.wandb_project = "omnibot-go2w"
