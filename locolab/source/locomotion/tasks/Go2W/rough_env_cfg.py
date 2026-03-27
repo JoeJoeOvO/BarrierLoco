@@ -30,6 +30,7 @@ class Go2WRoughSceneCfg(Go2WSceneCfg):
     def __post_init__(self):
         self.terrain.terrain_type = "generator"
         self.terrain.terrain_generator = ROUGH_TERRAIN_CFG
+        self.terrain.max_init_terrain_level = 2
 
 
 # ==============================================================================
@@ -105,15 +106,15 @@ class Go2WRoughRewardsCfg(Go2WRewardsCfg):
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_foot"])},
     )
 
-    # 撞到障碍侧面时，奖励脚抬高到 target_height 以上——高度信号比速度信号更稳定
-    feet_lift_on_stumble = RewTerm(
-        func=mdp.feet_lift_on_stumble,
-        weight=10.0,
+    # 地形自适应高度惩罚：rough 地形用 base_height_l2（无 deadzone，target 自动叠加地面高度）
+    # 替换继承自 flat 的 base_height_tolerance，参考 LocoLeggedWheel custom_base_height_l2
+    base_height = RewTerm(
+        func=mdp.base_height_l2,
+        weight=-5.0,
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_foot"]),
-            "asset_cfg": SceneEntityCfg("robot", body_names=[".*_foot"]),
-            "stumble_ratio": 1.0,
-            "target_height": 0.12,
+            "target_height": 0.42,
+            "sensor_cfg": SceneEntityCfg("height_scanner"),
+            "terrain_height_threshold": (-0.5, 0.5),
         },
     )
 

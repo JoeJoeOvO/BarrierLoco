@@ -116,35 +116,6 @@ def upward(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("r
     return reward
 
 
-def base_height_l2(
-    env: ManagerBasedRLEnv,
-    target_height: float,
-    sensor_cfg: SceneEntityCfg,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-) -> torch.Tensor:
-    """Penalize base height deviation from target using L2 squared kernel.
-
-    Uses height scanner to measure ground-relative height.
-
-    Args:
-        env: The environment object.
-        target_height: The desired base height above ground.
-        sensor_cfg: Configuration for height scanner sensor.
-        asset_cfg: Configuration for the robot asset.
-    """
-    from isaaclab.sensors import RayCaster
-
-    asset: RigidObject = env.scene[asset_cfg.name]
-    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
-
-    # Compute height above ground: root_z - ray_hit_z
-    height = asset.data.root_pos_w[:, 2].unsqueeze(1) - sensor.data.ray_hits_w[:, :, 2]
-    # ray_hits_w can be inf when no hit, replace with target_height to avoid NaN
-    height = torch.nan_to_num(height, nan=target_height, posinf=target_height, neginf=target_height)
-
-    return torch.square(height.mean(dim=1) - target_height)
-
-
 def base_height_tolerance(
     env: ManagerBasedRLEnv,
     target_height: float,
@@ -163,6 +134,41 @@ def base_height_tolerance(
     mean_height = height.mean(dim=1)
 
     return torch.clamp(torch.abs(mean_height - target_height) - tolerance, min=0.0)
+
+
+def base_height_l2(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    terrain_height_threshold: tuple[float, float] = (-0.5, 0.5),
+) -> torch.Tensor:
+    """地形自适应高度惩罚（L2，无 deadzone）。
+
+    相对于当前地形表面的高度偏差，使用 RayCaster 测量地面高度。
+    参考 LocoLeggedWheel 的 custom_base_height_l2：
+    - 用 nan_to_num + clamp 防止地形边缘 NaN/Inf 导致梯度爆炸
+    - target 自动叠加地形高度，适用于坡面/台阶地形
+    """
+    from isaaclab.sensors import RayCaster
+
+    asset: RigidObject = env.scene[asset_cfg.name]
+    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
+
+    # 获取地面高度（世界坐标 z），做 NaN/Inf 保护并 clamp 到合理范围
+    terrain_z = sensor.data.ray_hits_w[..., 2]
+    terrain_z = torch.nan_to_num(
+        terrain_z,
+        nan=0.0,
+        posinf=terrain_height_threshold[1],
+        neginf=terrain_height_threshold[0],
+    )
+    terrain_z = torch.clamp(terrain_z, min=terrain_height_threshold[0], max=terrain_height_threshold[1])
+
+    # 地形自适应目标高度 = 固定目标高度 + 当前地面平均高度
+    adjusted_target = target_height + torch.mean(terrain_z, dim=1)
+
+    return torch.square(asset.data.root_pos_w[:, 2] - adjusted_target)
 
 
 # ==============================================================================

@@ -104,7 +104,7 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
     )
     dof_acc_l2_wheel = RewTerm(
         func=mdp.joint_acc_l2,
-        weight=-2.5e-7,
+        weight=-2.5e-9,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_foot_.*"])},
     )
     dof_torques_l2 = RewTerm(
