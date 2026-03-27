@@ -371,23 +371,24 @@ class LocomotionRewardsCfg:
     track_lin_vel_xy = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
         weight=2.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
+        # use_gravity_gating: 机器人倾斜时自动缩减速度追踪奖励，防止倒着跑刷分
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25), "use_gravity_gating": True},
     )
     # Narrow std (sqrt(0.05)≈0.22): steep gradient near zero error, rewards precision
     track_lin_vel_xy_enhance = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
         weight=1.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.02)},
+        params={"command_name": "base_velocity", "std": math.sqrt(0.02), "use_gravity_gating": True},
     )
     track_ang_vel_z = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
         weight=2.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25), "use_gravity_gating": True},
     )
     track_ang_vel_z_enhance = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
         weight=1.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.02)},
+        params={"command_name": "base_velocity", "std": math.sqrt(0.02), "use_gravity_gating": True},
     )
 
     # -- base stability

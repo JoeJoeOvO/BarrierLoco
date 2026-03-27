@@ -59,9 +59,16 @@ class Go2WRoughCommandsCfg(LocomotionCommandsCfg):
 
 @configclass
 class Go2WRoughCurriculumCfg(LocomotionCurriculumCfg):
-    """Curriculum terms for Go2W training on rough terrain."""
+    """Curriculum terms for Go2W training on rough terrain.
+
+    Per-axis velocity curriculum (参考 LocoLeggedWheel):
+    - x/ang 分轴独立维护课程进度，互不干扰
+    - 双向调整：成功率低于 lower_threshold 时降级，避免训练卡在过难任务
+    """
 
     terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
+
+    # x 轴线速度课程：初始 ±0.5，逐步扩展到 ±1.5
     lin_vel_cmd_levels = CurrTerm(
         func=mdp.lin_vel_cmd_curriculum,
         params={
@@ -69,6 +76,15 @@ class Go2WRoughCurriculumCfg(LocomotionCurriculumCfg):
             "reward_threshold": 0.8,
             "step_size": 0.1,
             "max_lin_vel_x": (-1.5, 1.5),
+        },
+    )
+
+    # 角速度课程：初始 ±0.5，逐步扩展到 ±1.5
+    ang_vel_cmd_levels = CurrTerm(
+        func=mdp.ang_vel_cmd_levels,
+        params={
+            "reward_term_name": "track_ang_vel_z",
+            "reward_threshold": 0.8,
         },
     )
 
