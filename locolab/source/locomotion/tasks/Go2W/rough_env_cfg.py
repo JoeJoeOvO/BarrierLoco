@@ -30,6 +30,7 @@ class Go2WRoughSceneCfg(Go2WSceneCfg):
     def __post_init__(self):
         self.terrain.terrain_type = "generator"
         self.terrain.terrain_generator = ROUGH_TERRAIN_CFG
+        self.terrain.max_init_terrain_level = 2
 
 
 # ==============================================================================
@@ -87,18 +88,6 @@ class Go2WRoughRewardsCfg(Go2WRewardsCfg):
         func=mdp.feet_stumble,
         weight=-1.5,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_foot"])},
-    )
-
-    # 撞到障碍侧面时，奖励脚抬高到 target_height 以上——高度信号比速度信号更稳定
-    feet_lift_on_stumble = RewTerm(
-        func=mdp.feet_lift_on_stumble,
-        weight=10.0,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_foot"]),
-            "asset_cfg": SceneEntityCfg("robot", body_names=[".*_foot"]),
-            "stumble_ratio": 1.0,
-            "target_height": 0.08,
-        },
     )
 
     # Hip: 保持较强约束维持横向姿态稳定，移动时适度放松
