@@ -515,6 +515,18 @@ def joint_deviation_l1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = Scene
     return torch.sum(deviation, dim=-1)
 
 
+def joint_deviation_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize deviation from default joint positions using squared L2 kernel."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    if asset_cfg.joint_ids is not None:
+        joint_ids = asset_cfg.joint_ids
+    else:
+        joint_ids = slice(None)
+
+    deviation = asset.data.joint_pos[:, joint_ids] - asset.data.default_joint_pos[:, joint_ids]
+    return torch.sum(torch.square(deviation), dim=-1)
+
+
 """
 Action regularization.
 """

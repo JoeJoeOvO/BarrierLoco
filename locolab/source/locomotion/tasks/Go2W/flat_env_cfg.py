@@ -80,15 +80,29 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
         weight=-5.0,
         params={
             "target_height": 0.42,
-            "tolerance": 0.05,
+            "tolerance": 0.02,
             "sensor_cfg": SceneEntityCfg("height_scanner"),
         },
     )
     stand_still = RewTerm(
         func=mdp.stand_still,
-        weight=-1.0,
+        weight=-1.5,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
+        },
+    )
+    leg_joint_deviation = RewTerm(
+        func=mdp.joint_deviation_l2,
+        weight=-0.3,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_thigh_.*", ".*_calf_.*"]),
+        },
+    )
+    hip_joint_deviation = RewTerm(
+        func=mdp.joint_deviation_l2,
+        weight=-0.6,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*"]),
         },
     )
     dof_acc_l2 = RewTerm(

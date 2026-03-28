@@ -112,7 +112,7 @@ class Go2WRoughEnvCfg(Go2WFlatEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        self.episode_length_s = 40.0
+        self.episode_length_s = 20.0
 
 
 @configclass
