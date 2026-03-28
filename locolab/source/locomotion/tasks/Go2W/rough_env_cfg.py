@@ -5,8 +5,7 @@ import math
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import ContactSensorCfg
+from isaaclab.sensors import RayCasterCfg, patterns
 from isaaclab.utils import configclass
 
 from locolab.source.locomotion import mdp
@@ -26,6 +25,17 @@ from .flat_env_cfg import Go2WFlatEnvCfg, Go2WRewardsCfg, Go2WSceneCfg
 @configclass
 class Go2WRoughSceneCfg(Go2WSceneCfg):
     """Scene configuration for Go2W on rough terrain."""
+
+    # Use a tighter footprint for base-height reward on rough terrain so the
+    # target tracks the support region more closely near steps and boxes.
+    base_height_scanner = RayCasterCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/base",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[0.6, 0.4]),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+    )
 
     def __post_init__(self):
         self.terrain.terrain_type = "generator"
@@ -103,7 +113,15 @@ class Go2WRoughCurriculumCfg(LocomotionCurriculumCfg):
 class Go2WRoughRewardsCfg(Go2WRewardsCfg):
     """Reward terms for Go2W training on rough terrain."""
 
-    pass
+    base_height = RewTerm(
+        func=mdp.base_height_tolerance,
+        weight=-5.0,
+        params={
+            "target_height": 0.42,
+            "tolerance": 0.02,
+            "sensor_cfg": SceneEntityCfg("base_height_scanner"),
+        },
+    )
 
 
 @configclass
@@ -118,6 +136,7 @@ class Go2WRoughEnvCfg(Go2WFlatEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.episode_length_s = 20.0
+        self.scene.base_height_scanner.update_period = self.decimation * self.sim.dt
 
 
 @configclass
