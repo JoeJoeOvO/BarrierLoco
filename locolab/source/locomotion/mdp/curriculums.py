@@ -102,17 +102,11 @@ def ang_vel_cmd_levels(
 
 
 class VelocityCurriculumWrapper:
-    """Wrapper class for velocity command curriculum with state tracking.
+    """Velocity curriculum with stateful promotion and demotion logic."""
 
-    Uses accumulated success/failure counts across episodes to determine
-    when to expand velocity command ranges, providing more stable progression.
-
-    Supports both linear and angular velocity curriculum via separate instances.
-    """
-
-    def __init__(self):
+    def __init__(self, name: str):
         self.succeeded_count = 0
-        self.__name__ = "lin_vel_cmd_curriculum"
+        self.__name__ = name
 
     def __call__(
         self,
@@ -121,7 +115,11 @@ class VelocityCurriculumWrapper:
         command_name: str = "base_velocity",
         reward_term_name: str = "track_lin_vel_xy",
         reward_threshold: float = 0.8,
+        lower_threshold: float | None = None,
         step_size: float = 0.1,
+        min_lin_vel_x: tuple[float, float] | None = None,
+        min_lin_vel_y: tuple[float, float] | None = None,
+        min_ang_vel_z: tuple[float, float] | None = None,
         max_lin_vel_x: tuple[float, float] | None = None,
         max_lin_vel_y: tuple[float, float] | None = None,
         max_ang_vel_z: tuple[float, float] | None = None,
@@ -136,7 +134,12 @@ class VelocityCurriculumWrapper:
             reward_threshold: Fraction of max reward that triggers range expansion (0-1).
                 This is compared against the normalized reward (0-1), where 1.0 means
                 perfect tracking.
-            step_size: Amount to expand range in each direction per step.
+            lower_threshold: Fraction of max reward that triggers range contraction.
+                If None, contraction is disabled.
+            step_size: Amount to expand or contract range in each direction per step.
+            min_lin_vel_x: Minimum (min, max) bounds for x velocity when contracting.
+            min_lin_vel_y: Minimum (min, max) bounds for y velocity when contracting.
+            min_ang_vel_z: Minimum (min, max) bounds for z angular velocity when contracting.
             max_lin_vel_x: Maximum (min, max) limits for x velocity.
             max_lin_vel_y: Maximum (min, max) limits for y velocity.
             max_ang_vel_z: Maximum (min, max) limits for z angular velocity.
@@ -159,13 +162,14 @@ class VelocityCurriculumWrapper:
         reward_term = env.reward_manager.get_term_cfg(reward_term_name)
         reward_sum_per_sec = env.reward_manager._episode_sums[reward_term_name][env_ids] / env.max_episode_length_s
         threshold_value = reward_term.weight * reward_threshold
+        lower_threshold_value = reward_term.weight * lower_threshold if lower_threshold is not None else None
 
         # Update success count based on each environment's performance
         self.succeeded_count += (reward_sum_per_sec > threshold_value).sum().item()
-        self.succeeded_count -= (reward_sum_per_sec <= threshold_value).sum().item()
-        self.succeeded_count = max(0, self.succeeded_count)
+        if lower_threshold_value is not None:
+            self.succeeded_count -= (reward_sum_per_sec < lower_threshold_value).sum().item()
 
-        # Expand range only when accumulated successes exceed num_envs
+        # Expand range only when accumulated successes exceed num_envs.
         if self.succeeded_count > env.num_envs:
             if max_lin_vel_x is not None:
                 lin_vel_x_min = max(ranges.lin_vel_x[0] - step_size, max_lin_vel_x[0])
@@ -184,10 +188,28 @@ class VelocityCurriculumWrapper:
 
             # Reset counter after expansion
             self.succeeded_count = 0
+        elif self.succeeded_count < -env.num_envs:
+            if min_lin_vel_x is not None:
+                lin_vel_x_min = min(ranges.lin_vel_x[0] + step_size, min_lin_vel_x[0])
+                lin_vel_x_max = max(ranges.lin_vel_x[1] - step_size, min_lin_vel_x[1])
+                ranges.lin_vel_x = (lin_vel_x_min, lin_vel_x_max)
+
+            if min_lin_vel_y is not None:
+                lin_vel_y_min = min(ranges.lin_vel_y[0] + step_size, min_lin_vel_y[0])
+                lin_vel_y_max = max(ranges.lin_vel_y[1] - step_size, min_lin_vel_y[1])
+                ranges.lin_vel_y = (lin_vel_y_min, lin_vel_y_max)
+
+            if min_ang_vel_z is not None:
+                ang_vel_z_min = min(ranges.ang_vel_z[0] + step_size, min_ang_vel_z[0])
+                ang_vel_z_max = max(ranges.ang_vel_z[1] - step_size, min_ang_vel_z[1])
+                ranges.ang_vel_z = (ang_vel_z_min, ang_vel_z_max)
+
+            self.succeeded_count = 0
 
         if max_ang_vel_z is not None and max_lin_vel_x is None:
             return torch.tensor(ranges.ang_vel_z[1], device=env.device)
         return torch.tensor(ranges.lin_vel_x[1], device=env.device)
 
 
-lin_vel_cmd_curriculum = VelocityCurriculumWrapper()
+lin_vel_cmd_curriculum = VelocityCurriculumWrapper("lin_vel_cmd_curriculum")
+ang_vel_cmd_curriculum = VelocityCurriculumWrapper("ang_vel_cmd_curriculum")

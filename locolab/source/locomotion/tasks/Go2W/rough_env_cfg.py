@@ -53,7 +53,10 @@ class Go2WRoughCommandsCfg(LocomotionCommandsCfg):
             lin_vel_x=(-0.5, 0.5), lin_vel_y=(-0.1, 0.1), ang_vel_z=(-0.5, 0.5), heading=(-math.pi, math.pi)
         ),
         limit_ranges=mdp.UniformVelocityCommandYawFrameCfg.Ranges(
-            lin_vel_x=(-1.5, 1.5), lin_vel_y=(-0.3, 0.3), ang_vel_z=(-0.5, 0.5), heading=(-math.pi, math.pi)
+            lin_vel_x=(-1.5, 1.5),
+            lin_vel_y=(-0.3, 0.3),
+            ang_vel_z=(-1.0, 1.0),
+            heading=(-math.pi, math.pi),
         ),
     )
 
@@ -69,36 +72,38 @@ class Go2WRoughCurriculumCfg(LocomotionCurriculumCfg):
 
     terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
 
-    # x 轴线速度课程：初始 ±0.5，逐步扩展到 ±1.5
+    # x 轴线速度课程：初始 ±0.5，逐步扩展到 ±1.5，失败时回退到初始范围
     lin_vel_cmd_levels = CurrTerm(
         func=mdp.lin_vel_cmd_curriculum,
         params={
             "reward_term_name": "track_lin_vel_xy",
             "reward_threshold": 0.8,
+            "lower_threshold": 0.6,
             "step_size": 0.1,
+            "min_lin_vel_x": (-0.5, 0.5),
             "max_lin_vel_x": (-1.5, 1.5),
         },
     )
 
-    # 角速度课程：初始 ±0.5，逐步扩展到 ±1.5
+    # 角速度课程：初始 ±0.5，逐步扩展到 ±1.0，失败时回退到初始范围
     ang_vel_cmd_levels = CurrTerm(
-        func=mdp.ang_vel_cmd_levels,
+        func=mdp.ang_vel_cmd_curriculum,
         params={
             "reward_term_name": "track_ang_vel_z",
             "reward_threshold": 0.8,
+            "lower_threshold": 0.6,
+            "step_size": 0.1,
+            "min_ang_vel_z": (-0.5, 0.5),
+            "max_ang_vel_z": (-1.0, 1.0),
         },
     )
 
 
 @configclass
 class Go2WRoughRewardsCfg(Go2WRewardsCfg):
-    """Reward terms for Go2W training on rough terrain.
+    """Reward terms for Go2W training on rough terrain."""
 
-    Overrides joint_pos_deviation from Go2WRewardsCfg:
-    - hip: keep stand_still_scale=2.0, moving_scale=0.5 (姿态稳定，但允许适当偏转)
-    - thigh/calf: moving_scale=0.2 (抬腿自由度更大，rough 地形穿越需要)
-    Adds feet_stumble on top.
-    """
+    pass
 
 
 @configclass
@@ -122,6 +127,3 @@ class Go2WRoughPlayEnvCfg(Go2WRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 32
-        # 缩小地形用于 play 测试，增加地形种类
-        self.scene.terrain.terrain_generator.num_rows = 2
-        self.scene.terrain.terrain_generator.num_cols = 5
