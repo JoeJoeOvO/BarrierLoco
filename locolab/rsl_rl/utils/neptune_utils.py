@@ -81,6 +81,7 @@ class NeptuneSummaryWriter(SummaryWriter):
         self.run[self._map_path(tag)].log(scalar_value, step=global_step)
 
     def stop(self) -> None:
+        super().close()
         self.run.stop()
 
     def save_model(self, model_path: str, it: int) -> None:

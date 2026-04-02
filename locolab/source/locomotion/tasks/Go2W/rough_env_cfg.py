@@ -63,9 +63,9 @@ class Go2WRoughCommandsCfg(LocomotionCommandsCfg):
             lin_vel_x=(-0.5, 0.5), lin_vel_y=(-0.1, 0.1), ang_vel_z=(-0.5, 0.5), heading=(-math.pi, math.pi)
         ),
         limit_ranges=mdp.UniformVelocityCommandYawFrameCfg.Ranges(
-            lin_vel_x=(-1.5, 1.5),
+            lin_vel_x=(-1.0, 1.0),
             lin_vel_y=(-0.3, 0.3),
-            ang_vel_z=(-1.0, 1.0),
+            ang_vel_z=(-math.pi / 4, math.pi / 4),
             heading=(-math.pi, math.pi),
         ),
     )
@@ -91,7 +91,7 @@ class Go2WRoughCurriculumCfg(LocomotionCurriculumCfg):
             "lower_threshold": 0.6,
             "step_size": 0.1,
             "min_lin_vel_x": (-0.5, 0.5),
-            "max_lin_vel_x": (-1.5, 1.5),
+            "max_lin_vel_x": (-1.0, 1.0),
         },
     )
 
@@ -104,7 +104,7 @@ class Go2WRoughCurriculumCfg(LocomotionCurriculumCfg):
             "lower_threshold": 0.6,
             "step_size": 0.1,
             "min_ang_vel_z": (-0.5, 0.5),
-            "max_ang_vel_z": (-1.0, 1.0),
+            "max_ang_vel_z": (-math.pi / 4, math.pi / 4),
         },
     )
 
@@ -115,7 +115,7 @@ class Go2WRoughRewardsCfg(Go2WRewardsCfg):
 
     base_height = RewTerm(
         func=mdp.base_height_tolerance,
-        weight=-5.0,
+        weight=-1.0,
         params={
             "target_height": 0.42,
             "tolerance": 0.02,

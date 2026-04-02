@@ -143,18 +143,20 @@ class LocomotionEventCfg:
     """Base configuration for events."""
 
     # startup
+    # ETH: friction_range = [0.5, 1.25]
     physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.3, 1.2),
-            "dynamic_friction_range": (0.3, 1.2),
+            "static_friction_range": (0.5, 1.25),
+            "dynamic_friction_range": (0.5, 1.25),
             "restitution_range": (0.0, 0.15),
             "num_buckets": 64,
         },
     )
 
+    # ETH legged_gym: added_mass_range = [-1, 3]
     add_base_mass = EventTerm(
         func=mdp.randomize_rigid_body_mass,
         mode="startup",
@@ -178,43 +180,17 @@ class LocomotionEventCfg:
 
     randomize_actuator_gains = EventTerm(
         func=mdp.randomize_actuator_gains,
-        # 改为 mode="reset"：每次 episode 重置时重新采样执行器刚度/阻尼，
-        # 增强对执行器参数不确定性的鲁棒性；distribution 改为 log_uniform
-        # 使得采样在对数尺度上均匀分布，参考 LocoLeggedWheel 配置。
-        mode="reset",
+        mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
             "stiffness_distribution_params": (0.8, 1.2),
             "damping_distribution_params": (0.8, 1.2),
             "operation": "scale",
-            "distribution": "log_uniform",
+            "distribution": "uniform",
         },
     )
 
-    # 全身惯量随机化：startup 阶段对所有刚体的惯量对角分量做 scale (0.5, 1.5)，
-    # 提升策略对真实机器人惯量误差的鲁棒性，参考 LocoLeggedWheel 实现。
-    randomize_rigid_body_inertia = EventTerm(
-        func=mdp.randomize_rigid_body_inertia,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "inertia_distribution_params": (0.5, 1.5),
-            "operation": "scale",
-        },
-    )
-
-    # base CoM 位置随机化：startup 阶段对 base 质心位置在 xyz 方向各加 ±0.05m，
-    # 模拟真实机器人载荷偏心或装配误差，参考 LocoLeggedWheel 实现。
-    randomize_rigid_body_com = EventTerm(
-        func=mdp.randomize_rigid_body_com,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-            "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.05, 0.05)},
-        },
-    )
-
-    # reset
+    # reset (ETH: push_robots, push_interval_s=15, max_push_vel_xy=1.0)
     base_external_force_torque = EventTerm(
         func=mdp.apply_external_force_torque,
         mode="reset",
@@ -250,24 +226,6 @@ class LocomotionEventCfg:
         },
     )
 
-    # 定期推力扰动：每 6~10 秒对机器人施加一次随机速度扰动，
-    # 模拟真实场景中的碰撞或外力干扰，提升策略抗扰动能力，参考 LocoLeggedWheel 实现。
-    push_robot = EventTerm(
-        func=mdp.push_by_setting_velocity,
-        mode="interval",
-        interval_range_s=(6.0, 10.0),
-        params={
-            "velocity_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.3, 0.3),
-                "z": (0.0, 0.0),
-                "roll": (0.0, 0.0),
-                "pitch": (0.0, 0.0),
-                "yaw": (0.0, 0.0),
-            },
-        },
-    )
-
 
 @configclass
 class LocomotionCommandsCfg:
@@ -283,10 +241,7 @@ class LocomotionCommandsCfg:
         heading_control_stiffness=2.0,
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-1.5, 1.5),
-            lin_vel_y=(-0.1, 0.1),
-            ang_vel_z=(-math.pi / 4, math.pi / 4),
-            heading=(-math.pi, math.pi),
+            lin_vel_x=(-1.5, 1.5), lin_vel_y=(-0.1, 0.1), ang_vel_z=(-1.5, 1.5), heading=(-math.pi, math.pi)
         ),
     )
 
@@ -333,10 +288,21 @@ class LocomotionObservationsCfg:
             clip=(-100, 100),
             params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
         )
+        wheel_contact_state = ObsTerm(
+            func=mdp.wheel_contact_state,
+            clip=(0.0, 1.0),
+            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"), "force_threshold": 1.0},
+        )
+
         height_scanner = ObsTerm(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=(-1.0, 1.0),
+        )
+        terrain_height_stats = ObsTerm(
+            func=mdp.terrain_height_stats,
+            clip=(-1.0, 1.0),
+            params={"sensor_cfg": SceneEntityCfg("height_scanner"), "offset": 0.5},
         )
 
     policy: PolicyCfg = PolicyCfg()
@@ -347,46 +313,46 @@ class LocomotionObservationsCfg:
 class LocomotionRewardsCfg:
     """Base reward terms for the MDP.
 
-    Subclasses can override specific terms or add new ones.
+    Reference: ETH RSL "Learning Robust Autonomous Navigation and Locomotion
+    for Wheeled-Legged Robots" (Science Robotics 2024), Section S3.
     """
 
     # ==========================================================================
     # Task Rewards - directly tied to achieving locomotion objectives
     # ==========================================================================
 
-    # -- survival
+    # -- survival (ETH: r_survival = 1.0)
     stay_alive = RewTerm(func=mdp.stay_alive_startup, weight=5.0)
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
 
-    # -- velocity tracking (dual-std: wide std for exploration, narrow std for precision)
-    # Wide std (sqrt(0.5)≈0.707): broad gradient landscape, guides exploration
+    # -- velocity tracking (ETH: exp(-2.0 * ||error||^2), std = sqrt(0.5) ≈ 0.707)
     track_lin_vel_xy = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=2.0,
-        # use_gravity_gating: 机器人倾斜时自动缩减速度追踪奖励，防止倒着跑刷分
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25), "use_gravity_gating": True},
-    )
-    # Narrow std (sqrt(0.05)≈0.22): steep gradient near zero error, rewards precision
-    track_lin_vel_xy_enhance = RewTerm(
-        func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=1.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.02), "use_gravity_gating": True},
+        weight=5.0,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.5)},
     )
     track_ang_vel_z = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
-        weight=2.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.25), "use_gravity_gating": True},
-    )
-    track_ang_vel_z_enhance = RewTerm(
-        func=mdp.track_ang_vel_z_world_exp,
-        weight=1.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.02), "use_gravity_gating": True},
+        weight=3.0,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.5)},
     )
 
-    # -- base stability
-    base_lin_vel_z = RewTerm(func=mdp.lin_vel_z_l2, weight=-1.0)
-    base_ang_vel_xy = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-0.5)
+    # -- body motion penalty (ETH: r_bm = -1.25*vz^2 - 0.4*|wx| - 0.4*|wy|)
+    body_motion = RewTerm(
+        func=mdp.body_motion_penalty,
+        weight=-1.0,
+        params={"vz_weight": 1.25, "omega_xy_weight": 0.4},
+    )
+
+    # -- orientation (ETH paper: r_ori = arccos(R_b(3,3))^2)
+    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
+
+    # -- zero command body penalty (ETH: extra penalty when |v_des| < 0.05)
+    zero_cmd_penalty = RewTerm(
+        func=mdp.zero_command_body_penalty,
+        weight=-2.0,
+        params={"command_name": "base_velocity", "command_threshold": 0.05},
+    )
 
 
 @configclass
@@ -395,20 +361,10 @@ class LocomotionTerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     base_contact = DoneTerm(
-        func=mdp.DelayedIllegalContact,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"),
-            "threshold": 1.0,
-            "delay_steps": 5,
-        },
+        func=mdp.illegal_contact,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
     )
-    bad_orientation = DoneTerm(
-        func=mdp.DelayedBadOrientation,
-        params={
-            "limit_angle": 1.0,
-            "delay_steps": 5,
-        },
-    )
+    bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": 1.0})
 
 
 @configclass

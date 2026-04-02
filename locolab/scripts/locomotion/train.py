@@ -44,8 +44,18 @@ import cli_args  # isort: skip
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
-parser.add_argument("--video_interval", type=int, default=2000, help="Interval between video recordings (in steps).")
+parser.add_argument(
+    "--video_length",
+    type=int,
+    default=1000,
+    help="Length of each recorded training clip in environment steps. Default is 1000 steps (~20s).",
+)
+parser.add_argument(
+    "--video_interval",
+    type=int,
+    default=500,
+    help="Interval between recorded training clips in training iterations. Default is 500 iterations.",
+)
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, choices=tasks, help="Name of the task.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
@@ -178,11 +188,19 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
         resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
 
+    video_dir = None
+    video_fps = None
+
     # wrap for video recording
     if args_cli.video:
+        video_dir = os.path.join(log_dir, "videos", "train")
+        video_fps = max(int(round(1.0 / env.unwrapped.step_dt)), 1)
+        # Convert iteration-based interval to env-step-based interval for RecordVideo
+        steps_per_iter = agent_cfg.num_steps_per_env
+        step_interval = args_cli.video_interval * steps_per_iter
         video_kwargs = {
-            "video_folder": os.path.join(log_dir, "videos", "train"),
-            "step_trigger": lambda step: step % args_cli.video_interval == 0,
+            "video_folder": video_dir,
+            "step_trigger": lambda step: step > 0 and step % step_interval == 0,
             "video_length": args_cli.video_length,
             "disable_logger": True,
         }
@@ -195,6 +213,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # create runner from rsl-rl
     runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+    if args_cli.video:
+        runner.logger.register_video_dir(
+            video_dir,
+            tag="Videos/train",
+            fps=video_fps,
+            steps_per_iter=agent_cfg.num_steps_per_env,
+        )
     # write git state to logs
     runner.add_git_repo_to_log(__file__)
     # load the checkpoint
@@ -212,6 +237,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # close the simulator
     env.close()
+    if args_cli.video:
+        runner.logger.flush_videos()
+    runner.logger.close()
 
 
 if __name__ == "__main__":

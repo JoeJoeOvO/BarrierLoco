@@ -66,6 +66,7 @@ class WandbSummaryWriter(SummaryWriter):
         wandb.log({tag: scalar_value}, step=global_step)
 
     def stop(self) -> None:
+        super().close()
         wandb.finish()
 
     def save_model(self, model_path: str, it: int) -> None:
@@ -73,3 +74,6 @@ class WandbSummaryWriter(SummaryWriter):
 
     def save_file(self, path: str) -> None:
         wandb.save(path, base_path=os.path.dirname(path))
+
+    def log_video(self, path: str, tag: str, global_step: int | None = None, fps: int | None = None) -> None:
+        wandb.log({tag: wandb.Video(path, fps=fps, format="mp4")}, step=global_step)

@@ -45,14 +45,8 @@ def track_lin_vel_xy_yaw_frame_exp(
     std: float,
     command_name: str,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    use_gravity_gating: bool = False,
 ) -> torch.Tensor:
-    """Reward tracking of linear velocity commands (xy) in the gravity aligned robot frame using exponential kernel.
-
-    Args:
-        use_gravity_gating: 若为 True，奖励乘以 -projected_gravity_b[:, 2]（机器人直立时≈1，
-            倾倒时趋近 0），防止倾倒状态下仍给予速度追踪奖励，参考 LocoLeggedWheel 实现。
-    """
+    """Reward tracking of linear velocity commands (xy) in the gravity aligned robot frame using exponential kernel."""
     asset: RigidObject = env.scene[asset_cfg.name]
     # Transform velocity to yaw-aligned frame (gravity aligned, only yaw rotation)
     vel_yaw = math_utils.quat_apply_inverse(
@@ -61,11 +55,7 @@ def track_lin_vel_xy_yaw_frame_exp(
     lin_vel_error = torch.sum(
         torch.square(env.command_manager.get_command(command_name)[:, :2] - vel_yaw[:, :2]), dim=1
     )
-    reward = torch.exp(-lin_vel_error / std**2)
-    # gravity gating：机器人倾倒时（projected_gravity_b[:, 2] → 0）速度奖励衰减至零
-    if use_gravity_gating:
-        reward *= -env.scene["robot"].data.projected_gravity_b[:, 2]
-    return reward
+    return torch.exp(-lin_vel_error / std**2)
 
 
 def track_ang_vel_z_world_exp(
@@ -73,21 +63,11 @@ def track_ang_vel_z_world_exp(
     command_name: str,
     std: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    use_gravity_gating: bool = False,
 ) -> torch.Tensor:
-    """Reward tracking of angular velocity commands (yaw) in world frame using exponential kernel.
-
-    Args:
-        use_gravity_gating: 若为 True，奖励乘以 -projected_gravity_b[:, 2]，
-            防止倾倒状态下仍给予偏航速度奖励，参考 LocoLeggedWheel 实现。
-    """
+    """Reward tracking of angular velocity commands (yaw) in world frame using exponential kernel."""
     asset: RigidObject = env.scene[asset_cfg.name]
     ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_w[:, 2])
-    reward = torch.exp(-ang_vel_error / std**2)
-    # gravity gating：机器人倾倒时速度追踪奖励衰减至零
-    if use_gravity_gating:
-        reward *= -env.scene["robot"].data.projected_gravity_b[:, 2]
-    return reward
+    return torch.exp(-ang_vel_error / std**2)
 
 
 """
@@ -116,6 +96,35 @@ def upward(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("r
     return reward
 
 
+def base_height_l2(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize base height deviation from target using L2 squared kernel.
+
+    Uses height scanner to measure ground-relative height.
+
+    Args:
+        env: The environment object.
+        target_height: The desired base height above ground.
+        sensor_cfg: Configuration for height scanner sensor.
+        asset_cfg: Configuration for the robot asset.
+    """
+    from isaaclab.sensors import RayCaster
+
+    asset: RigidObject = env.scene[asset_cfg.name]
+    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
+
+    # Compute height above ground: root_z - ray_hit_z
+    height = asset.data.root_pos_w[:, 2].unsqueeze(1) - sensor.data.ray_hits_w[:, :, 2]
+    # ray_hits_w can be inf when no hit, replace with target_height to avoid NaN
+    height = torch.nan_to_num(height, nan=target_height, posinf=target_height, neginf=target_height)
+
+    return torch.square(height.mean(dim=1) - target_height)
+
+
 def base_height_tolerance(
     env: ManagerBasedRLEnv,
     target_height: float,
@@ -123,7 +132,18 @@ def base_height_tolerance(
     sensor_cfg: SceneEntityCfg,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Penalize base height deviation from target with a deadzone around the target height."""
+    """Penalize base height deviation from target with a tolerance band (ETH-style r_h).
+
+    No penalty when height is within [target - tolerance, target + tolerance].
+    Penalty = max(0, |h - target| - tolerance) outside the band.
+
+    Args:
+        env: The environment object.
+        target_height: Desired base height above ground.
+        tolerance: Tolerance band half-width (no penalty within this range).
+        sensor_cfg: Configuration for height scanner sensor.
+        asset_cfg: Configuration for the robot asset.
+    """
     from isaaclab.sensors import RayCaster
 
     asset: RigidObject = env.scene[asset_cfg.name]
@@ -136,39 +156,57 @@ def base_height_tolerance(
     return torch.clamp(torch.abs(mean_height - target_height) - tolerance, min=0.0)
 
 
-def base_height_l2(
+def body_motion_penalty(
     env: ManagerBasedRLEnv,
-    target_height: float,
-    sensor_cfg: SceneEntityCfg,
+    vz_weight: float = 1.25,
+    omega_xy_weight: float = 0.4,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    terrain_height_threshold: tuple[float, float] = (-0.5, 0.5),
 ) -> torch.Tensor:
-    """地形自适应高度惩罚（L2，无 deadzone）。
+    """Penalize undesired body motion (ETH-style r_bm).
 
-    相对于当前地形表面的高度偏差，使用 RayCaster 测量地面高度。
-    参考 LocoLeggedWheel 的 custom_base_height_l2：
-    - 用 nan_to_num + clamp 防止地形边缘 NaN/Inf 导致梯度爆炸
-    - target 自动叠加地形高度，适用于坡面/台阶地形
+    Separates z-velocity (L2) from angular velocity xy (L1):
+        penalty = vz_weight * v_z^2 + omega_xy_weight * (|w_x| + |w_y|)
+
+    Args:
+        env: The environment object.
+        vz_weight: Weight for z-velocity squared penalty.
+        omega_xy_weight: Weight for angular velocity xy L1 penalty.
+        asset_cfg: Configuration for the robot asset.
     """
-    from isaaclab.sensors import RayCaster
-
     asset: RigidObject = env.scene[asset_cfg.name]
-    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
+    vz = asset.data.root_lin_vel_w[:, 2]
+    wx = asset.data.root_ang_vel_w[:, 0]
+    wy = asset.data.root_ang_vel_w[:, 1]
 
-    # 获取地面高度（世界坐标 z），做 NaN/Inf 保护并 clamp 到合理范围
-    terrain_z = sensor.data.ray_hits_w[..., 2]
-    terrain_z = torch.nan_to_num(
-        terrain_z,
-        nan=0.0,
-        posinf=terrain_height_threshold[1],
-        neginf=terrain_height_threshold[0],
-    )
-    terrain_z = torch.clamp(terrain_z, min=terrain_height_threshold[0], max=terrain_height_threshold[1])
+    return vz_weight * torch.square(vz) + omega_xy_weight * (torch.abs(wx) + torch.abs(wy))
 
-    # 地形自适应目标高度 = 固定目标高度 + 当前地面平均高度
-    adjusted_target = target_height + torch.mean(terrain_z, dim=1)
 
-    return torch.square(asset.data.root_pos_w[:, 2] - adjusted_target)
+def zero_command_body_penalty(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    command_threshold: float = 0.05,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize any body velocity when command is near zero (ETH-style).
+
+    When |v_des| < threshold, penalize all body velocity to keep robot still.
+
+    Args:
+        env: The environment object.
+        command_name: Name of the velocity command.
+        command_threshold: Speed below which robot should be stationary.
+        asset_cfg: Configuration for the robot asset.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    cmd = env.command_manager.get_command(command_name)
+    cmd_norm = torch.linalg.norm(cmd[:, :2], dim=1)
+
+    lin_vel = asset.data.root_lin_vel_w[:, :3]
+    ang_vel = asset.data.root_ang_vel_w[:, :3]
+    body_vel = torch.sum(torch.square(lin_vel), dim=1) + torch.sum(torch.square(ang_vel), dim=1)
+
+    is_zero_cmd = (cmd_norm < command_threshold).float()
+    return body_vel * is_zero_cmd
 
 
 # ==============================================================================
@@ -196,9 +234,7 @@ def stand_still(
     """Penalize joint deviation from default when command is near zero."""
     asset: Articulation = env.scene[asset_cfg.name]
 
-    joint_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
-    default_joint_pos = asset.data.default_joint_pos[:, asset_cfg.joint_ids]
-    reward = torch.sum(torch.abs(joint_pos - default_joint_pos), dim=1)
+    reward = torch.sum(torch.abs(asset.data.joint_pos - asset.data.default_joint_pos), dim=1)
     cmd_norm = torch.norm(env.command_manager.get_command(command_name), dim=1)
     return reward * (cmd_norm < 0.1)
 
@@ -209,28 +245,37 @@ def joint_position_penalty(
     stand_still_scale: float,
     velocity_threshold: float,
     ang_vel_threshold: float = 0.1,
-    moving_scale: float = 0.25,
 ) -> torch.Tensor:
-    """Penalize joint position error from default with command-based smooth gating.
+    """Penalize joint position error from default on the articulation.
 
-    The penalty is strongest near zero command and decays smoothly as linear and angular
-    velocity commands increase.
+    Args:
+        env: The environment instance.
+        asset_cfg: Configuration for the robot asset with joint_ids to penalize.
+        stand_still_scale: Scale factor for penalty when standing still.
+        velocity_threshold: Linear velocity threshold below which standing still scale applies.
+        ang_vel_threshold: Angular velocity threshold. When |ang_vel_z| > threshold, penalty is reduced.
     """
     asset: Articulation = env.scene[asset_cfg.name]
     cmd = env.command_manager.get_command("base_velocity")
     cmd_lin = torch.linalg.norm(cmd[:, :2], dim=1)
-    cmd_ang = torch.abs(cmd[:, 2])
+    cmd_ang = torch.abs(cmd[:, 2])  # angular velocity command
+    body_vel = torch.linalg.norm(asset.data.root_lin_vel_b[:, :2], dim=1)
 
+    # Compute joint position error
     joint_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
     default_pos = asset.data.default_joint_pos[:, asset_cfg.joint_ids]
-    joint_deviation = torch.linalg.norm(joint_pos - default_pos, dim=1)
+    reward = torch.linalg.norm(joint_pos - default_pos, dim=1)
+    # joint_names = [asset.joint_names[i] for i in asset_cfg.joint_ids]
+    # print(f"[joint_pos_penalty_stand_still] joint_ids: {asset_cfg.joint_ids}")
+    # print(f"[joint_pos_penalty_stand_still] joint_names: {joint_names}")      # Conditions:
+    # - If turning (ang_vel > threshold): normal penalty (not scaled)
+    # - If moving (lin_vel > 0 or body_vel > threshold): normal penalty
+    # - If standing still (no lin_vel, no ang_vel, no body motion): scaled penalty
+    is_turning = cmd_ang > ang_vel_threshold
+    is_moving = torch.logical_or(cmd_lin > 0.0, body_vel > velocity_threshold)
+    is_active = torch.logical_or(is_turning, is_moving)
 
-    lin_gate = torch.clamp(1.0 - cmd_lin / velocity_threshold, min=0.0, max=1.0)
-    ang_gate = torch.clamp(1.0 - cmd_ang / ang_vel_threshold, min=0.0, max=1.0)
-    idle_gate = lin_gate * ang_gate
-
-    scale = moving_scale + (stand_still_scale - moving_scale) * idle_gate
-    return scale * joint_deviation
+    return torch.where(is_active, reward, stand_still_scale * reward)
 
 
 """
@@ -246,41 +291,6 @@ def feet_stumble(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Te
     # Penalize feet hitting vertical surfaces
     reward = torch.any(forces_xy > 4 * forces_z, dim=1).float()
     return reward
-
-
-def feet_lift_on_stumble(
-    env: ManagerBasedRLEnv,
-    sensor_cfg: SceneEntityCfg,
-    asset_cfg: SceneEntityCfg,
-    stumble_ratio: float = 2.5,
-    target_height: float = 0.08,
-) -> torch.Tensor:
-    """当脚撞侧面（stumble）时，奖励该脚抬高到 target_height 以上。
-
-    逻辑：
-      1. 检测哪只脚正在 stumble（水平力 > stumble_ratio * 竖直力）
-      2. 只对这些脚，奖励其绝对高度超过 target_height 的部分
-      3. 高度信号比速度信号更稳定，策略可以学到"撞到后快速抬腿"
-
-    改动说明（vs 原版）：
-      - 奖励由 vel_z 改为 clamp(foot_height - target_height, min=0)
-      - stumble_ratio 从 4.0 降到 2.5，让 stumble 检测更容易触发
-    """
-    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    asset: Articulation = env.scene[asset_cfg.name]
-
-    # stumble 检测：哪些脚撞了侧面 (N, num_feet)
-    forces_z = torch.abs(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2])
-    forces_xy = torch.linalg.norm(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :2], dim=2)
-    is_stumble = forces_xy > stumble_ratio * forces_z  # (N, num_feet)
-
-    # 脚的绝对高度（世界坐标 z）(N, num_feet)
-    foot_height = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
-
-    # 只在 stumble 的脚上，奖励高于 target_height 的部分
-    lift_reward = torch.clamp(foot_height - target_height, min=0.0) * is_stumble.float()
-
-    return torch.sum(lift_reward, dim=1)
 
 
 def feet_height_body(
@@ -513,18 +523,6 @@ def joint_deviation_l1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = Scene
 
     deviation = torch.abs(asset.data.joint_pos[:, joint_ids] - asset.data.default_joint_pos[:, joint_ids])
     return torch.sum(deviation, dim=-1)
-
-
-def joint_deviation_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
-    """Penalize deviation from default joint positions using squared L2 kernel."""
-    asset: Articulation = env.scene[asset_cfg.name]
-    if asset_cfg.joint_ids is not None:
-        joint_ids = asset_cfg.joint_ids
-    else:
-        joint_ids = slice(None)
-
-    deviation = asset.data.joint_pos[:, joint_ids] - asset.data.default_joint_pos[:, joint_ids]
-    return torch.sum(torch.square(deviation), dim=-1)
 
 
 """

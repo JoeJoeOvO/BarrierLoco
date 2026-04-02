@@ -74,6 +74,9 @@ python scripts/locomotion/train.py --task=OmniBot-Go2W-Rough-v0 --num_envs=4096
 
 # 从检查点恢复训练
 python scripts/locomotion/train.py --task=OmniBot-Go2W-Flat-v0 --num_envs=4096 --resume
+
+# 每 1000 step 录制约 10 秒训练视频并自动上传到 W&B
+python scripts/locomotion/train.py --task=OmniBot-Go2W-Rough-v0 --num_envs=4096 --logger wandb --video
 ```
 
 ### 推理/测试
@@ -98,6 +101,9 @@ python scripts/locomotion/play.py --task=OmniBot-Go2W-Flat-v0 --video --video_le
 | `--max_iterations` | 最大训练迭代次数 | 1500 |
 | `--seed` | 随机种子 | 42 |
 | `--logger` | 日志类型 (tensorboard/wandb/neptune) | tensorboard |
+| `--video` | 训练/回放时录制视频 | False |
+| `--video_interval` | 训练录制间隔（iterations） | 500 |
+| `--video_length` | 单段训练视频长度（env steps） | 500 |
 | `--resume` | 从检查点恢复 | False |
 | `--checkpoint` | 指定检查点路径 | - |
 

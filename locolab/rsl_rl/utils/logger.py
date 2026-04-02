@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import re
 import statistics
 import time
 from collections import deque
@@ -38,6 +39,10 @@ class Logger:
         self.git_status_repos = [rsl_rl.__file__]
         self.tot_timesteps = 0
         self.tot_time = 0
+        self.video_sources: list[dict[str, str | int | None]] = []
+        self.uploaded_videos: set[str] = set()
+        self.observed_video_states: dict[str, tuple[int, int]] = {}
+        self.current_it: int = 0
 
         # Create buffers
         self.ep_extras = []
@@ -123,6 +128,7 @@ class Logger:
             iteration_time = collect_time + learn_time
             self.tot_timesteps += collection_size
             self.tot_time += iteration_time
+            self.current_it = it
 
             # Log episode extras
             extras_string = ""
@@ -225,6 +231,8 @@ class Logger:
             )
             print(log_string)
 
+            self._upload_pending_videos(it)
+
             # Clear extras buffer
             self.ep_extras.clear()
 
@@ -232,6 +240,30 @@ class Logger:
         """Save the model to external logging services if specified."""
         if self.writer and not self.disable_logs and self.logger_type in ["neptune", "wandb"]:
             self.writer.save_model(path, it)
+
+    def register_video_dir(
+        self, path: str, tag: str = "Videos/train", fps: int | None = None, steps_per_iter: int = 1
+    ) -> None:
+        """Register a directory whose mp4 files should be uploaded during training."""
+        self.video_sources.append({"path": path, "tag": tag, "fps": fps, "steps_per_iter": steps_per_iter})
+
+    def flush_videos(self) -> None:
+        """Upload any pending videos after the environment has been closed."""
+        self._upload_pending_videos(self.current_it, force=True)
+
+    def close(self) -> None:
+        """Close the external logging writer cleanly."""
+        if not self.writer or self.disable_logs:
+            return
+
+        stop = getattr(self.writer, "stop", None)
+        if callable(stop):
+            stop()
+            return
+
+        close = getattr(self.writer, "close", None)
+        if callable(close):
+            close()
 
     def _prepare_logging_writer(self) -> None:
         """Prepare the logging writer, which can be either Tensorboard, W&B or Neptune."""
@@ -288,3 +320,59 @@ class Logger:
             if self.writer and self.logger_type in ["wandb", "neptune"] and file_paths:
                 for path in file_paths:
                     self.writer.save_file(path)
+
+    @staticmethod
+    def _parse_video_step(video_path: pathlib.Path) -> int | None:
+        """Extract the env step number from a RecordVideo filename like ``rl-video-step-1000.mp4``."""
+        m = re.search(r"step-(\d+)", video_path.stem)
+        return int(m.group(1)) if m else None
+
+    def _upload_pending_videos(self, step: int, force: bool = False) -> None:
+        """Upload new training videos to W&B without interrupting training on failure.
+
+        During training (force=False) a file is only uploaded once its size and mtime have
+        been stable across two consecutive calls, indicating that RecordVideo has finished
+        writing it.  When force=True (called from flush_videos after env.close()) the
+        stability check is skipped because RecordVideo.close() already finalised every file.
+
+        The W&B global_step is converted from the env step in the video filename to a
+        training iteration (env_step // steps_per_iter) so it aligns with scalar metrics.
+        """
+        if not self.writer or self.disable_logs or self.logger_type != "wandb":
+            return
+
+        for source in self.video_sources:
+            video_dir = pathlib.Path(str(source["path"]))
+            if not video_dir.is_dir():
+                continue
+
+            fps = source["fps"]
+            tag = str(source["tag"])
+            steps_per_iter = max(source.get("steps_per_iter", 1) or 1, 1)
+
+            for video_path in sorted(video_dir.glob("*.mp4")):
+                resolved_path = str(video_path.resolve())
+                if resolved_path in self.uploaded_videos:
+                    continue
+
+                stat = video_path.stat()
+                if stat.st_size == 0:
+                    continue
+
+                if not force:
+                    current_state = (stat.st_size, stat.st_mtime_ns)
+                    previous_state = self.observed_video_states.get(resolved_path)
+                    self.observed_video_states[resolved_path] = current_state
+                    if previous_state != current_state:
+                        continue
+
+                env_step = self._parse_video_step(video_path)
+                video_iter = env_step // steps_per_iter if env_step is not None else step
+
+                try:
+                    self.writer.log_video(resolved_path, tag=tag, global_step=video_iter, fps=fps)
+                except Exception as exc:
+                    print(f"[WARNING] Failed to upload training video '{resolved_path}' to W&B: {exc}")
+                else:
+                    self.uploaded_videos.add(resolved_path)
+                    self.observed_video_states.pop(resolved_path, None)
