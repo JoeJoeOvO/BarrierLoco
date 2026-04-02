@@ -96,6 +96,9 @@ class OnPolicyRunner:
                     # Book keeping
                     self.logger.process_env_step(rewards, dones, extras, intrinsic_rewards)
 
+                # Synchronize CUDA to get accurate timing
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
                 stop = time.time()
                 collect_time = stop - start
                 start = stop
@@ -106,6 +109,8 @@ class OnPolicyRunner:
             # Update policy
             loss_dict = self.alg.update()
 
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             stop = time.time()
             learn_time = stop - start
             self.current_learning_iteration = it

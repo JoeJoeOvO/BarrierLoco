@@ -288,21 +288,10 @@ class LocomotionObservationsCfg:
             clip=(-100, 100),
             params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
         )
-        wheel_contact_state = ObsTerm(
-            func=mdp.wheel_contact_state,
-            clip=(0.0, 1.0),
-            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"), "force_threshold": 1.0},
-        )
-
         height_scanner = ObsTerm(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=(-1.0, 1.0),
-        )
-        terrain_height_stats = ObsTerm(
-            func=mdp.terrain_height_stats,
-            clip=(-1.0, 1.0),
-            params={"sensor_cfg": SceneEntityCfg("height_scanner"), "offset": 0.5},
         )
 
     policy: PolicyCfg = PolicyCfg()

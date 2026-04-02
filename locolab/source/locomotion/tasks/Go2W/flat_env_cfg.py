@@ -84,7 +84,7 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
         weight=-5.0,
         params={
             "target_height": 0.42,
-            "tolerance": 0.05,
+            "tolerance": 0.02,
             "sensor_cfg": SceneEntityCfg("height_scanner"),
         },
     )
@@ -103,7 +103,9 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
     dof_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2,
         weight=-5e-7,  # conservative step from original -2.5e-7; ETH ratio is aspirational target
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*", ".*_foot_.*"])
+        },
     )
 
     # -- torque penalty (ETH: r_tau = -Σ||τ_i||^2, all joints)
@@ -113,6 +115,11 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
 
+    dof_power_l1 = RewTerm(
+        func=mdp.dof_power_l1,
+        weight=-2e-5,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )
     # -- joint position limits (ETH: r_jc, knee constraint soft penalty only)
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
@@ -177,9 +184,6 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
             "ang_vel_threshold": 0.2,
         },
     )
-
-    # NOTE: feet_air_time and feet_stumble kept out of flat reward (added in rough terrain).
-    # dof_power_l1 removed (not in ETH formulation).
 
 
 # ==============================================================================
@@ -255,6 +259,11 @@ class Go2WFlatEnvCfg(LocomotionEnvCfg):
     observations: Go2WObservationsCfg = Go2WObservationsCfg()
     rewards: Go2WRewardsCfg = Go2WRewardsCfg()
     curriculum: Go2WCurriculumCfg = Go2WCurriculumCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        # Increase zero-command training ratio for better stand-still behavior
+        self.commands.base_velocity.rel_standing_envs = 0.25
 
 
 @configclass

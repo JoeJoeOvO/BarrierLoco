@@ -245,6 +245,7 @@ def joint_position_penalty(
     stand_still_scale: float,
     velocity_threshold: float,
     ang_vel_threshold: float = 0.1,
+    command_threshold: float = 0.1,
 ) -> torch.Tensor:
     """Penalize joint position error from default on the articulation.
 
@@ -272,7 +273,7 @@ def joint_position_penalty(
     # - If moving (lin_vel > 0 or body_vel > threshold): normal penalty
     # - If standing still (no lin_vel, no ang_vel, no body motion): scaled penalty
     is_turning = cmd_ang > ang_vel_threshold
-    is_moving = torch.logical_or(cmd_lin > 0.0, body_vel > velocity_threshold)
+    is_moving = torch.logical_or(cmd_lin > command_threshold, body_vel > velocity_threshold)
     is_active = torch.logical_or(is_turning, is_moving)
 
     return torch.where(is_active, reward, stand_still_scale * reward)
