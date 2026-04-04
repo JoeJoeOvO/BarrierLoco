@@ -30,6 +30,14 @@ def joint_acc(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("
     return asset.data.joint_acc[:, asset_cfg.joint_ids]
 
 
+def body_lin_vel(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """The linear velocity of specified bodies in world frame."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    # body_lin_vel_w shape: (num_envs, num_bodies, 3)
+    vel = asset.data.body_lin_vel_w[:, asset_cfg.body_ids]
+    return vel.reshape(vel.shape[0], -1)
+
+
 def body_contact_force(env: ManagerBasedEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     """The contact forces of the body."""
     # extract the used quantities (to enable type-hinting)

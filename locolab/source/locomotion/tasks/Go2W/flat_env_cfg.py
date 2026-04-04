@@ -84,7 +84,7 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
         weight=-5.0,
         params={
             "target_height": 0.42,
-            "tolerance": 0.02,
+            "tolerance": 0.005,
             "sensor_cfg": SceneEntityCfg("height_scanner"),
         },
     )

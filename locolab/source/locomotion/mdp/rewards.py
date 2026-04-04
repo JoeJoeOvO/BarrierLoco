@@ -134,15 +134,11 @@ def base_height_tolerance(
 ) -> torch.Tensor:
     """Penalize base height deviation from target with a tolerance band (ETH-style r_h).
 
+    Uses height scanner ray hits to measure height above local terrain,
+    so the reward works on both flat and rough terrain.
+
     No penalty when height is within [target - tolerance, target + tolerance].
     Penalty = max(0, |h - target| - tolerance) outside the band.
-
-    Args:
-        env: The environment object.
-        target_height: Desired base height above ground.
-        tolerance: Tolerance band half-width (no penalty within this range).
-        sensor_cfg: Configuration for height scanner sensor.
-        asset_cfg: Configuration for the robot asset.
     """
     from isaaclab.sensors import RayCaster
 
@@ -150,10 +146,12 @@ def base_height_tolerance(
     sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
 
     height = asset.data.root_pos_w[:, 2].unsqueeze(1) - sensor.data.ray_hits_w[:, :, 2]
+    # ray_hits_w can be inf on miss, so replace invalid values
     height = torch.nan_to_num(height, nan=target_height, posinf=target_height, neginf=target_height)
-    mean_height = height.mean(dim=1)
+    measured_height = height.mean(dim=1)
 
-    return torch.clamp(torch.abs(mean_height - target_height) - tolerance, min=0.0)
+    height_error = torch.abs(measured_height - target_height)
+    return torch.clamp(height_error - tolerance, min=0.0)
 
 
 def body_motion_penalty(

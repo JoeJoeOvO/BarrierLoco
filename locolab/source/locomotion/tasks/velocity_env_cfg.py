@@ -282,16 +282,23 @@ class LocomotionObservationsCfg:
         last_action = ObsTerm(func=mdp.last_action, clip=(-100, 100))
         joint_effort = ObsTerm(func=mdp.joint_effort, scale=0.01, clip=(-100, 100))
         joint_acc = ObsTerm(func=mdp.joint_acc, scale=0.01, clip=(-100, 100))
+        height_scanner = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            clip=(-1.0, 1.0),
+        )
+        base_pos_z = ObsTerm(func=mdp.base_pos_z, clip=(-100, 100))
+        feet_lin_vel = ObsTerm(
+            func=mdp.body_lin_vel,
+            scale=0.1,
+            clip=(-100, 100),
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=".*_foot")},
+        )
         feet_contact_force = ObsTerm(
             func=mdp.body_contact_force,
             scale=0.01,
             clip=(-100, 100),
             params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
-        )
-        height_scanner = ObsTerm(
-            func=mdp.height_scan,
-            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-            clip=(-1.0, 1.0),
         )
 
     policy: PolicyCfg = PolicyCfg()
@@ -317,12 +324,12 @@ class LocomotionRewardsCfg:
     # -- velocity tracking (ETH: exp(-2.0 * ||error||^2), std = sqrt(0.5) ≈ 0.707)
     track_lin_vel_xy = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=5.0,
+        weight=4.0,
         params={"command_name": "base_velocity", "std": math.sqrt(0.5)},
     )
     track_ang_vel_z = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
-        weight=3.0,
+        weight=2.0,
         params={"command_name": "base_velocity", "std": math.sqrt(0.5)},
     )
 
