@@ -6,7 +6,6 @@ This module provides base classes that can be inherited by robot-specific config
 import math
 
 import isaaclab.sim as sim_utils
-import isaaclab.terrains as terrain_gen
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
@@ -24,54 +23,6 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from locolab.source.locomotion import mdp
-
-# ==============================================================================
-# Terrain Configurations
-# ==============================================================================
-
-ROUGH_TERRAIN_CFG = terrain_gen.TerrainGeneratorCfg(
-    size=(8.0, 8.0),
-    border_width=20.0,
-    num_rows=10,
-    num_cols=20,
-    horizontal_scale=0.1,
-    vertical_scale=0.005,
-    slope_threshold=0.75,
-    difficulty_range=(0.0, 1.0),
-    use_cache=False,
-    sub_terrains={
-        "flat": terrain_gen.MeshPlaneTerrainCfg(proportion=0.1),
-        "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-            proportion=0.1, noise_range=(0.01, 0.06), noise_step=0.01, border_width=0.25
-        ),
-        "hf_pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
-            proportion=0.1, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
-        ),
-        "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
-            proportion=0.1, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
-        ),
-        "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-            proportion=0.2, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
-        ),
-        "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-            proportion=0.2,
-            step_height_range=(0.05, 0.23),
-            step_width=0.3,
-            platform_width=3.0,
-            border_width=1.0,
-            holes=False,
-        ),
-        "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=0.2,
-            step_height_range=(0.05, 0.23),
-            step_width=0.3,
-            platform_width=3.0,
-            border_width=1.0,
-            holes=False,
-        ),
-    },
-)
-
 
 # ==============================================================================
 # Base Scene Configuration
@@ -282,23 +233,16 @@ class LocomotionObservationsCfg:
         last_action = ObsTerm(func=mdp.last_action, clip=(-100, 100))
         joint_effort = ObsTerm(func=mdp.joint_effort, scale=0.01, clip=(-100, 100))
         joint_acc = ObsTerm(func=mdp.joint_acc, scale=0.01, clip=(-100, 100))
+
         height_scanner = ObsTerm(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=(-1.0, 1.0),
         )
-        base_pos_z = ObsTerm(func=mdp.base_pos_z, clip=(-100, 100))
-        feet_lin_vel = ObsTerm(
-            func=mdp.body_lin_vel,
-            scale=0.1,
-            clip=(-100, 100),
-            params={"asset_cfg": SceneEntityCfg("robot", body_names=".*_foot")},
-        )
-        feet_contact_force = ObsTerm(
-            func=mdp.body_contact_force,
-            scale=0.01,
-            clip=(-100, 100),
-            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
+        terrain_height_stats = ObsTerm(
+            func=mdp.terrain_height_stats,
+            clip=(-1.0, 1.0),
+            params={"sensor_cfg": SceneEntityCfg("height_scanner"), "offset": 0.5},
         )
 
     policy: PolicyCfg = PolicyCfg()
@@ -307,47 +251,70 @@ class LocomotionObservationsCfg:
 
 @configclass
 class LocomotionRewardsCfg:
-    """Base reward terms for the MDP.
+    """Base reward terms for the MDP — only velocity tracking (shared by all envs).
 
-    Reference: ETH RSL "Learning Robust Autonomous Navigation and Locomotion
-    for Wheeled-Legged Robots" (Science Robotics 2024), Section S3.
+    Robot-specific rewards (survival, orientation, regularization, etc.)
+    are defined in subclasses (Go2WRewardsCfg, Go2WRoughRewardsCfg).
     """
 
-    # ==========================================================================
-    # Task Rewards - directly tied to achieving locomotion objectives
-    # ==========================================================================
-
-    # -- survival (ETH: r_survival = 1.0)
-    stay_alive = RewTerm(func=mdp.stay_alive_startup, weight=5.0)
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
-
-    # -- velocity tracking (ETH: exp(-2.0 * ||error||^2), std = sqrt(0.5) ≈ 0.707)
     track_lin_vel_xy = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=4.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.5)},
+        weight=1.5,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     track_ang_vel_z = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
-        weight=2.0,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.5)},
+        weight=0.75,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
+    base_height = RewTerm(
+        func=mdp.base_height_tolerance,
+        weight=-5.0,
+        params={
+            "target_height": 0.42,
+            "tolerance": 0.005,
+            "sensor_cfg": SceneEntityCfg("height_scanner"),
+        },
+    )
+    lin_vel_z = RewTerm(func=mdp.lin_vel_z_l2, weight=-1.0)
+    ang_vel_xy = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-0.5)
+    stand_still = RewTerm(
+        func=mdp.stand_still,
+        weight=-0.5,
+        params={"command_name": "base_velocity", "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )
+    # -- joint regularization (all joints)
+    dof_vel = RewTerm(
+        func=mdp.joint_vel_l2,
+        weight=-1e-7,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )
+    dof_acc = RewTerm(
+        func=mdp.joint_acc_l2,
+        weight=-1e-7,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )
+    torques = RewTerm(
+        func=mdp.joint_torques_l2,
+        weight=-5.0e-4,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )
+    dof_power_l1 = RewTerm(
+        func=mdp.dof_power_l1,
+        weight=-2e-5,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+    )
+    # -- action regularization
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
 
-    # -- body motion penalty (ETH: r_bm = -1.25*vz^2 - 0.4*|wx| - 0.4*|wy|)
-    body_motion = RewTerm(
-        func=mdp.body_motion_penalty,
+    collision = RewTerm(
+        func=mdp.undesired_contacts,
         weight=-1.0,
-        params={"vz_weight": 1.25, "omega_xy_weight": 0.4},
-    )
-
-    # -- orientation (ETH paper: r_ori = arccos(R_b(3,3))^2)
-    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
-
-    # -- zero command body penalty (ETH: extra penalty when |v_des| < 0.05)
-    zero_cmd_penalty = RewTerm(
-        func=mdp.zero_command_body_penalty,
-        weight=-2.0,
-        params={"command_name": "base_velocity", "command_threshold": 0.05},
+        params={
+            "threshold": 1.0,
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["base"]),
+        },
     )
 
 

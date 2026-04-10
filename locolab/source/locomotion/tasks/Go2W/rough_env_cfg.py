@@ -2,6 +2,7 @@
 
 import math
 
+import isaaclab.terrains as terrain_gen
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
@@ -10,16 +11,55 @@ from isaaclab.utils import configclass
 
 from locolab.source.locomotion import mdp
 from locolab.source.locomotion.tasks.velocity_env_cfg import (
-    ROUGH_TERRAIN_CFG,
     LocomotionCommandsCfg,
     LocomotionCurriculumCfg,
+    LocomotionRewardsCfg,
 )
 
-from .flat_env_cfg import Go2WFlatEnvCfg, Go2WRewardsCfg, Go2WSceneCfg
+from .flat_env_cfg import Go2WFlatEnvCfg, Go2WSceneCfg
 
 # ==============================================================================
 # Go2W Rough Scene Configuration
 # ==============================================================================
+
+GO2W_HIMLOCO_ROUGH_TERRAIN_CFG = terrain_gen.TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    difficulty_range=(0.0, 1.0),
+    use_cache=False,
+    sub_terrains={
+        "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+            proportion=0.1, noise_range=(0.01, 0.06), noise_step=0.01, border_width=0.25
+        ),
+        "hf_pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
+            proportion=0.1, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
+        ),
+        "boxes": terrain_gen.MeshRandomGridTerrainCfg(
+            proportion=0.25, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
+        ),
+        "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.35,
+            step_height_range=(0.05, 0.23),
+            step_width=0.3,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.2,
+            step_height_range=(0.05, 0.23),
+            step_width=0.3,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+    },
+)
 
 
 @configclass
@@ -28,24 +68,31 @@ class Go2WRoughSceneCfg(Go2WSceneCfg):
 
     # Use a tighter footprint for base-height reward on rough terrain so the
     # target tracks the support region more closely near steps and boxes.
-    base_height_scanner = RayCasterCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/base",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
-        ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[0.6, 0.4]),
-        debug_vis=False,
-        mesh_prim_paths=["/World/ground"],
-    )
+    # base_height_scanner = RayCasterCfg(
+    #     prim_path="{ENV_REGEX_NS}/Robot/base",
+    #     offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+    #     ray_alignment="yaw",
+    #     pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[0.6, 0.4]),
+    #     debug_vis=False,
+    #     mesh_prim_paths=["/World/ground"],
+    # )
 
     def __post_init__(self):
+        super().__post_init__()
         self.terrain.terrain_type = "generator"
-        self.terrain.terrain_generator = ROUGH_TERRAIN_CFG
+        self.terrain.terrain_generator = GO2W_HIMLOCO_ROUGH_TERRAIN_CFG
         self.terrain.max_init_terrain_level = 5
+        self.terrain.physics_material.static_friction = 0.8
+        self.terrain.physics_material.dynamic_friction = 0.8
+        # Keep a longer contact history for reactive obstacle-lift shaping.
+        self.contact_forces.history_length = 6
 
 
 # ==============================================================================
-# Go2W Rough Environment Configuration
+# Go2W Rough Commands Configuration
 # ==============================================================================
+
+
 @configclass
 class Go2WRoughCommandsCfg(LocomotionCommandsCfg):
     """Command configuration for Go2W rough terrain with curriculum-compatible ranges."""
@@ -53,75 +100,110 @@ class Go2WRoughCommandsCfg(LocomotionCommandsCfg):
     base_velocity = mdp.UniformVelocityCommandYawFrameCfg(
         asset_name="robot",
         class_type=mdp.UniformVelocityCommandYawFrame,
-        resampling_time_range=(5.0, 10.0),
-        rel_standing_envs=0.2,
-        rel_heading_envs=0.8,
+        resampling_time_range=(10.0, 10.0),
+        rel_standing_envs=0.0,
+        rel_heading_envs=1.0,
         heading_command=True,
         heading_control_stiffness=2.0,
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandYawFrameCfg.Ranges(
-            lin_vel_x=(-0.5, 0.5), lin_vel_y=(-0.1, 0.1), ang_vel_z=(-0.5, 0.5), heading=(-math.pi, math.pi)
+            lin_vel_x=(-1.0, 1.0), lin_vel_y=(-0.6, 0.6), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
         ),
         limit_ranges=mdp.UniformVelocityCommandYawFrameCfg.Ranges(
-            lin_vel_x=(-1.0, 1.0),
-            lin_vel_y=(-0.3, 0.3),
-            ang_vel_z=(-math.pi / 4, math.pi / 4),
+            lin_vel_x=(-1.5, 1.5),
+            lin_vel_y=(-0.6, 0.6),
+            ang_vel_z=(-1.0, 1.0),
             heading=(-math.pi, math.pi),
         ),
     )
+
+
+# ==============================================================================
+# Go2W Rough Curriculum Configuration
+# ==============================================================================
 
 
 @configclass
 class Go2WRoughCurriculumCfg(LocomotionCurriculumCfg):
     """Curriculum terms for Go2W training on rough terrain.
 
-    Per-axis velocity curriculum (参考 LocoLeggedWheel):
-    - x/ang 分轴独立维护课程进度，互不干扰
-    - 双向调整：成功率低于 lower_threshold 时降级，避免训练卡在过难任务
+    Match HIMLoco's simpler recipe:
+    - terrain curriculum based on episode travel distance
+    - command curriculum only expands forward speed range when tracking is good
     """
 
-    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
+    terrain_levels = CurrTerm(
+        func=mdp.terrain_levels_reward,
+        params={"command_name": "base_velocity"},
+    )
 
-    # x 轴线速度课程：初始 ±0.5，逐步扩展到 ±1.5，失败时回退到初始范围
     lin_vel_cmd_levels = CurrTerm(
         func=mdp.lin_vel_cmd_curriculum,
         params={
             "reward_term_name": "track_lin_vel_xy",
             "reward_threshold": 0.8,
-            "lower_threshold": 0.6,
-            "step_size": 0.1,
-            "min_lin_vel_x": (-0.5, 0.5),
-            "max_lin_vel_x": (-1.0, 1.0),
+            "step_size": 0.2,
+            "max_lin_vel_x": (-1.5, 1.5),
         },
     )
 
-    # 角速度课程：初始 ±0.5，逐步扩展到 ±1.0，失败时回退到初始范围
-    ang_vel_cmd_levels = CurrTerm(
-        func=mdp.ang_vel_cmd_curriculum,
-        params={
-            "reward_term_name": "track_ang_vel_z",
-            "reward_threshold": 0.8,
-            "lower_threshold": 0.6,
-            "step_size": 0.1,
-            "min_ang_vel_z": (-0.5, 0.5),
-            "max_ang_vel_z": (-math.pi / 4, math.pi / 4),
-        },
-    )
+
+# ==============================================================================
+# Go2W Rough Rewards Configuration
+# ==============================================================================
 
 
 @configclass
-class Go2WRoughRewardsCfg(Go2WRewardsCfg):
-    """Reward terms for Go2W training on rough terrain."""
+class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
+    """Reward terms for Go2W training on rough terrain.
 
-    base_height = RewTerm(
-        func=mdp.base_height_tolerance,
-        weight=-1.0,
+    Independently defined from LocomotionRewardsCfg (not inherited from Go2WRewardsCfg).
+    """
+
+    # -- zero-command → run_still
+    run_still = RewTerm(
+        func=mdp.run_still,
+        weight=-0.05,
         params={
-            "target_height": 0.42,
-            "tolerance": 0.02,
-            "sensor_cfg": SceneEntityCfg("base_height_scanner"),
+            "command_name": "base_velocity",
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
         },
     )
+
+    # -- contact regularization
+    collision = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-1.0,
+        params={
+            "threshold": 1.0,
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_thigh", ".*_calf", "base"]),
+        },
+    )
+    feet_stumble = RewTerm(
+        func=mdp.feet_stumble,
+        weight=-0.1,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_foot"]),
+            "ratio_threshold": 3.0,
+        },
+    )
+
+    # -- posture regularization
+    hip_default = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.5,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*"])},
+    )
+    dof_pos_limits = RewTerm(
+        func=mdp.joint_pos_limits,
+        weight=-1.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
+    )
+
+
+# ==============================================================================
+# Go2W Rough Environment Configuration
+# ==============================================================================
 
 
 @configclass
@@ -135,8 +217,10 @@ class Go2WRoughEnvCfg(Go2WFlatEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        self.episode_length_s = 20.0
-        self.scene.base_height_scanner.update_period = self.decimation * self.sim.dt
+        self.commands.base_velocity.rel_standing_envs = 0.0
+        # self.scene.base_height_scanner.update_period = self.decimation * self.sim.dt
+        self.scene.terrain.max_init_terrain_level = 2
+        self.terminations.bad_orientation = None
 
 
 @configclass

@@ -1,12 +1,9 @@
 """Go2W flat terrain environment configuration."""
 
-from isaaclab.managers import CurriculumTermCfg as CurrTerm
-from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
-from isaaclab.utils.noise import UniformNoiseCfg as Unoise
 
 from locolab.source.locomotion import mdp
 from locolab.source.locomotion.assets.robot import GO2W_CFG, GO2W_SDK_JOINT_NAMES
@@ -45,11 +42,11 @@ class Go2WSceneCfg(LocomotionSceneCfg):
 class Go2WActionsCfg:
     """Action specifications for Go2W wheel-legged robot."""
 
-    # Joints - Legs (Position Control) - 小scale限制腿部运动范围
+    # Joints - Legs (Position Control)
     joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"],
-        scale=0.25,  # 从0.25降到0.1，限制腿部动作幅度
+        scale=0.25,
         use_default_offset=True,
     )
     # Joints - Wheels (Velocity Control)
@@ -68,101 +65,15 @@ class Go2WActionsCfg:
 
 @configclass
 class Go2WRewardsCfg(LocomotionRewardsCfg):
-    """Reward terms for Go2W wheel-legged robot.
+    """Reward terms for Go2W wheel-legged robot on flat terrain."""
 
-    Reference: ETH RSL "Learning Robust Autonomous Navigation and Locomotion
-    for Wheeled-Legged Robots" (Science Robotics 2024), Section S3.
-    """
-
-    # ==========================================================================
-    # BASE STABILITY (ETH-style)
-    # ==========================================================================
-
-    # -- base height with tolerance band (ETH: r_h = max(0, |h-0.42|-0.05))
-    base_height = RewTerm(
-        func=mdp.base_height_tolerance,
-        weight=-5.0,
-        params={
-            "target_height": 0.42,
-            "tolerance": 0.005,
-            "sensor_cfg": SceneEntityCfg("height_scanner"),
-        },
+    zero_cmd_penalty = RewTerm(
+        func=mdp.zero_command_body_penalty,
+        weight=-2.0,
+        params={"command_name": "base_velocity", "command_threshold": 0.05},
     )
 
-    # ==========================================================================
-    # JOINT REGULARIZATION (ETH: r_s for legs only, r_tau for all)
-    # ==========================================================================
-
-    # -- joint motion: velocity^2 + 0.01*acceleration^2 (ETH: r_s, legs only)
-    # ETH r_s = -c_k * Σ(q̇² + 0.01*q̈²), ratio acc/vel = 0.01
-    dof_vel_l2 = RewTerm(
-        func=mdp.joint_vel_l2,
-        weight=-2e-4,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
-    )
-    dof_acc_l2 = RewTerm(
-        func=mdp.joint_acc_l2,
-        weight=-5e-7,  # conservative step from original -2.5e-7; ETH ratio is aspirational target
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*", ".*_foot_.*"])
-        },
-    )
-
-    # -- torque penalty (ETH: r_tau = -Σ||τ_i||^2, all joints)
-    dof_torques_l2 = RewTerm(
-        func=mdp.joint_torques_l2,
-        weight=-2e-5,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
-    )
-
-    dof_power_l1 = RewTerm(
-        func=mdp.dof_power_l1,
-        weight=-2e-5,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
-    )
-    # -- joint position limits (ETH: r_jc, knee constraint soft penalty only)
-    dof_pos_limits = RewTerm(
-        func=mdp.joint_pos_limits,
-        weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_calf_.*"])},
-    )
-
-    # ==========================================================================
-    # ACTION REGULARIZATION (ETH: 1st + 2nd order target smoothness)
-    # ==========================================================================
-
-    # -- action rate (1st order finite diff, legs)
-    action_rate_legs = RewTerm(
-        func=mdp.action_rate_l2_mask,
-        weight=-5e-3,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
-    )
-    # -- action smoothness (2nd order finite diff, legs, ETH: target smoothness)
-    action_smoothness_legs = RewTerm(
-        func=mdp.action_smoothness_penalty,
-        weight=-1e-2,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
-    )
-
-    # -- action rate (1st order, wheels, lighter penalty)
-    action_rate_wheels = RewTerm(
-        func=mdp.action_rate_l2_mask,
-        weight=-1e-2,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_foot_.*"])},
-    )
-    # -- action smoothness (2nd order, wheels)
-    action_smoothness_wheels = RewTerm(
-        func=mdp.action_smoothness_penalty,
-        weight=-1e-2,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_foot_.*"])},
-    )
-
-    # ==========================================================================
-    # CONTACT REGULARIZATION (ETH: r_bc = bad contacts except wheels)
-    # ==========================================================================
-
-    # -- undesired contacts (ETH: penalize contacts except wheels)
-    undesired_contacts = RewTerm(
+    collision = RewTerm(
         func=mdp.undesired_contacts,
         weight=-1.0,
         params={
@@ -170,19 +81,10 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_hip", ".*_thigh", ".*_calf", "base"]),
         },
     )
-
-    # -- joint position default deviation (wheeled-legged specific: prevents legs floating)
-    # NOTE: ETH ANYmal doesn't need this because its leg structure naturally resists floating.
-    # Go2W's wheels allow the policy to exploit leg-floating as a local optimum without this term.
-    joint_pos_deviation = RewTerm(
-        func=mdp.joint_position_penalty,
-        weight=-0.5,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
-            "stand_still_scale": 2.0,
-            "velocity_threshold": 3,
-            "ang_vel_threshold": 0.2,
-        },
+    dof_pos_limits = RewTerm(
+        func=mdp.joint_pos_limits,
+        weight=-1.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_calf_.*"])},
     )
 
 
@@ -214,6 +116,18 @@ class Go2WObservationsCfg(LocomotionObservationsCfg):
     @configclass
     class CriticCfg(LocomotionObservationsCfg.CriticCfg):
         """Observations for critic group - only leg joint positions."""
+
+        feet_contact_force = ObsTerm(
+            func=mdp.body_contact_force,
+            scale=0.01,
+            clip=(-100, 100),
+            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
+        )
+        wheel_contact_state = ObsTerm(
+            func=mdp.wheel_contact_state,
+            clip=(0.0, 1.0),
+            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"), "force_threshold": 1.0},
+        )
 
         def __post_init__(self):
             self.joint_pos.params = {

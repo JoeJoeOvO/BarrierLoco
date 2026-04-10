@@ -134,11 +134,15 @@ def base_height_tolerance(
 ) -> torch.Tensor:
     """Penalize base height deviation from target with a tolerance band (ETH-style r_h).
 
-    Uses height scanner ray hits to measure height above local terrain,
-    so the reward works on both flat and rough terrain.
-
     No penalty when height is within [target - tolerance, target + tolerance].
     Penalty = max(0, |h - target| - tolerance) outside the band.
+
+    Args:
+        env: The environment object.
+        target_height: Desired base height above ground.
+        tolerance: Tolerance band half-width (no penalty within this range).
+        sensor_cfg: Configuration for height scanner sensor.
+        asset_cfg: Configuration for the robot asset.
     """
     from isaaclab.sensors import RayCaster
 
@@ -146,12 +150,10 @@ def base_height_tolerance(
     sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
 
     height = asset.data.root_pos_w[:, 2].unsqueeze(1) - sensor.data.ray_hits_w[:, :, 2]
-    # ray_hits_w can be inf on miss, so replace invalid values
     height = torch.nan_to_num(height, nan=target_height, posinf=target_height, neginf=target_height)
-    measured_height = height.mean(dim=1)
+    mean_height = height.mean(dim=1)
 
-    height_error = torch.abs(measured_height - target_height)
-    return torch.clamp(height_error - tolerance, min=0.0)
+    return torch.clamp(torch.abs(mean_height - target_height) - tolerance, min=0.0)
 
 
 def body_motion_penalty(
@@ -237,13 +239,31 @@ def stand_still(
     return reward * (cmd_norm < 0.1)
 
 
+def run_still(
+    env: ManagerBasedRLEnv, command_name: str = "base_velocity", asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """TrackinBIT/HIMLoco-style penalty for leg deviation while running.
+
+    This mirrors their custom ``_reward_run_still``: penalize joint deviation
+    from default on locomotion commands, while excluding wheel joints via the
+    passed ``asset_cfg``.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    reward = torch.sum(
+        torch.abs(asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.default_joint_pos[:, asset_cfg.joint_ids]),
+        dim=1,
+    )
+    cmd_norm = torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1)
+    return reward * (cmd_norm > 0.1)
+
+
 def joint_position_penalty(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
     stand_still_scale: float,
     velocity_threshold: float,
     ang_vel_threshold: float = 0.1,
-    command_threshold: float = 0.1,
 ) -> torch.Tensor:
     """Penalize joint position error from default on the articulation.
 
@@ -271,7 +291,7 @@ def joint_position_penalty(
     # - If moving (lin_vel > 0 or body_vel > threshold): normal penalty
     # - If standing still (no lin_vel, no ang_vel, no body motion): scaled penalty
     is_turning = cmd_ang > ang_vel_threshold
-    is_moving = torch.logical_or(cmd_lin > command_threshold, body_vel > velocity_threshold)
+    is_moving = torch.logical_or(cmd_lin > 0.0, body_vel > velocity_threshold)
     is_active = torch.logical_or(is_turning, is_moving)
 
     return torch.where(is_active, reward, stand_still_scale * reward)
@@ -282,14 +302,21 @@ Feet regularization.
 """
 
 
-def feet_stumble(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
-    # extract the used quantities (to enable type-hinting)
+def feet_stumble(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    ratio_threshold: float = 3.0,
+) -> torch.Tensor:
+    """TrackinBIT/HIMLoco-for-Go2W feet stumble penalty.
+
+    Penalize feet hitting near-vertical obstacle faces using only the contact
+    force ratio test, without extra force gating or upright modulation.
+    """
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    forces_z = torch.abs(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2])
-    forces_xy = torch.linalg.norm(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :2], dim=2)
-    # Penalize feet hitting vertical surfaces
-    reward = torch.any(forces_xy > 4 * forces_z, dim=1).float()
-    return reward
+    contact_forces = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids]
+    forces_z = torch.abs(contact_forces[:, :, 2])
+    forces_xy = torch.linalg.norm(contact_forces[:, :, :2], dim=2)
+    return torch.any(forces_xy > ratio_threshold * forces_z, dim=1).float()
 
 
 def feet_height_body(

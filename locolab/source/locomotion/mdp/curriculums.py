@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import torch
+from isaaclab.managers import SceneEntityCfg
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -213,3 +214,40 @@ class VelocityCurriculumWrapper:
 
 lin_vel_cmd_curriculum = VelocityCurriculumWrapper("lin_vel_cmd_curriculum")
 ang_vel_cmd_curriculum = VelocityCurriculumWrapper("ang_vel_cmd_curriculum")
+
+
+def terrain_levels_reward(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    command_name: str = "base_velocity",
+) -> torch.Tensor:
+    """Terrain curriculum matching HIMLoco's legged_gym behavior.
+
+    Promotion: robot walks more than half the terrain length.
+    Demotion: robot walks less than half of the distance implied by the commanded
+    planar speed over the episode duration.
+
+    Args:
+        env: The environment instance.
+        env_ids: Environment indices that have been reset.
+        asset_cfg: Scene entity configuration for the robot asset.
+        command_name: Velocity command term used for the distance-based demotion threshold.
+
+    Returns:
+        The mean terrain level across all environments.
+    """
+    asset = env.scene[asset_cfg.name]
+    terrain = env.scene.terrain
+
+    # HIMLoco/legged_gym style: progress if the robot traverses half a terrain tile.
+    distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1)
+    move_up = distance > terrain.cfg.terrain_generator.size[0] / 2
+
+    # Demote only if the robot under-achieves the commanded travel distance.
+    command = env.command_manager.get_command(command_name)[env_ids, :2]
+    commanded_distance = torch.linalg.norm(command, dim=1) * env.max_episode_length_s
+    move_down = (distance < 0.5 * commanded_distance) & (~move_up)
+
+    terrain.update_env_origins(env_ids, move_up, move_down)
+    return torch.mean(terrain.terrain_levels.float())
