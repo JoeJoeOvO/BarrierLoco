@@ -10,7 +10,7 @@ from itertools import chain
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from rsl_rl.modules import ActorCritic, ActorCriticCNN, ActorCriticRecurrent, DecoderCollection
+from rsl_rl.modules import ActorCritic, ActorCriticCNN, ActorCriticDreamWaQ, ActorCriticRecurrent, DecoderCollection
 from rsl_rl.modules.rnd import RandomNetworkDistillation
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import resolve_callable, unpad_trajectories
@@ -20,12 +20,12 @@ from tensordict import TensorDict
 class PPO:
     """Proximal Policy Optimization algorithm (https://arxiv.org/abs/1707.06347)."""
 
-    policy: ActorCritic | ActorCriticRecurrent | ActorCriticCNN
+    policy: ActorCritic | ActorCriticRecurrent | ActorCriticCNN | ActorCriticDreamWaQ
     """The actor critic module."""
 
     def __init__(
         self,
-        policy: ActorCritic | ActorCriticRecurrent | ActorCriticCNN,
+        policy: ActorCritic | ActorCriticRecurrent | ActorCriticCNN | ActorCriticDreamWaQ,
         storage: RolloutStorage,
         num_learning_epochs: int = 5,
         num_mini_batches: int = 4,
@@ -176,6 +176,9 @@ class PPO:
         if self.rnd:
             self.rnd.update_normalization(obs)
 
+        # Record the next observations (obs after env.step is o_{t+1})
+        self.transition.next_observations = obs
+
         # Record the rewards and dones
         # Note: We clone here because later on we bootstrap the rewards based on timeouts
         self.transition.rewards = rewards.clone()
@@ -233,6 +236,7 @@ class PPO:
         # Decoder losses
         mean_actor_decoder_loss = 0 if self.actor_decoders else None
         mean_critic_decoder_loss = 0 if self.critic_decoders else None
+        mean_auxiliary_losses: dict[str, float] = {}
 
         # Get mini batch generator
         if self.policy.is_recurrent:
@@ -243,6 +247,8 @@ class PPO:
         # Iterate over batches
         for (
             obs_batch,
+            next_obs_batch,
+            dones_batch,
             actions_batch,
             target_values_batch,
             advantages_batch,
@@ -371,6 +377,23 @@ class PPO:
                     critic_decoder_loss = critic_decoder_result["loss"]
                     loss = loss + self.critic_decoder_loss_weight * critic_decoder_loss
 
+            if hasattr(self.policy, "compute_auxiliary_losses"):
+                auxiliary_losses = self.policy.compute_auxiliary_losses(
+                    obs_batch,
+                    next_obs=next_obs_batch,
+                    dones=dones_batch,
+                    actions=actions_batch,
+                    returns=returns_batch,
+                )
+                auxiliary_total = auxiliary_losses.pop("auxiliary_total", None)
+                if auxiliary_total is None:
+                    auxiliary_total = auxiliary_losses.pop("dreamwaq_total", None)
+                if auxiliary_total is None:
+                    raise ValueError("Auxiliary loss hook must return an 'auxiliary_total' entry.")
+                loss = loss + auxiliary_total / self.num_mini_batches
+                for key, value in auxiliary_losses.items():
+                    mean_auxiliary_losses[key] = mean_auxiliary_losses.get(key, 0.0) + value.item()
+
             # Symmetry loss
             if self.symmetry:
                 # Obtain the symmetric actions
@@ -477,6 +500,12 @@ class PPO:
             mean_actor_decoder_loss /= num_updates
         if mean_critic_decoder_loss is not None:
             mean_critic_decoder_loss /= num_updates
+        for key in mean_auxiliary_losses:
+            mean_auxiliary_losses[key] /= num_updates
+
+        # EMA / Polyak update for target encoder (RVCL)
+        if hasattr(self.policy, "update_target_encoder"):
+            self.policy.update_target_encoder()
 
         # Clear the storage
         self.storage.clear()
@@ -495,6 +524,7 @@ class PPO:
             loss_dict["actor_decoder"] = mean_actor_decoder_loss
         if self.critic_decoders:
             loss_dict["critic_decoder"] = mean_critic_decoder_loss
+        loss_dict.update(mean_auxiliary_losses)
 
         return loss_dict
 

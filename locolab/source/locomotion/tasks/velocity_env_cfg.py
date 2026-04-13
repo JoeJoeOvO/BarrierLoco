@@ -258,13 +258,13 @@ class LocomotionRewardsCfg:
     """
 
     track_lin_vel_xy = RewTerm(
-        func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=1.5,
+        func=mdp.track_lin_vel_xy_exp,
+        weight=2.0,
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     track_ang_vel_z = RewTerm(
-        func=mdp.track_ang_vel_z_world_exp,
-        weight=0.75,
+        func=mdp.track_ang_vel_z_exp,
+        weight=1.0,
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     base_height = RewTerm(
@@ -272,7 +272,7 @@ class LocomotionRewardsCfg:
         weight=-5.0,
         params={
             "target_height": 0.42,
-            "tolerance": 0.005,
+            "tolerance": 0.01,
             "sensor_cfg": SceneEntityCfg("height_scanner"),
         },
     )

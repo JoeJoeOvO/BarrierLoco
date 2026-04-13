@@ -40,33 +40,29 @@ Velocity tracking rewards.
 """
 
 
-def track_lin_vel_xy_yaw_frame_exp(
+def track_lin_vel_xy_exp(
     env: ManagerBasedRLEnv,
     std: float,
     command_name: str,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Reward tracking of linear velocity commands (xy) in the gravity aligned robot frame using exponential kernel."""
+    """Reward tracking of linear velocity commands (xy) in the base frame using exponential kernel."""
     asset: RigidObject = env.scene[asset_cfg.name]
-    # Transform velocity to yaw-aligned frame (gravity aligned, only yaw rotation)
-    vel_yaw = math_utils.quat_apply_inverse(
-        math_utils.yaw_quat(asset.data.root_quat_w), asset.data.root_lin_vel_w[:, :3]
-    )
     lin_vel_error = torch.sum(
-        torch.square(env.command_manager.get_command(command_name)[:, :2] - vel_yaw[:, :2]), dim=1
+        torch.square(env.command_manager.get_command(command_name)[:, :2] - asset.data.root_lin_vel_b[:, :2]), dim=1
     )
     return torch.exp(-lin_vel_error / std**2)
 
 
-def track_ang_vel_z_world_exp(
+def track_ang_vel_z_exp(
     env: ManagerBasedRLEnv,
     command_name: str,
     std: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Reward tracking of angular velocity commands (yaw) in world frame using exponential kernel."""
+    """Reward tracking of angular velocity commands (yaw) in the base frame using exponential kernel."""
     asset: RigidObject = env.scene[asset_cfg.name]
-    ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_w[:, 2])
+    ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_b[:, 2])
     return torch.exp(-ang_vel_error / std**2)
 
 

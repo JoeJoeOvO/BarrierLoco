@@ -7,6 +7,8 @@
 
 from .actor_critic import ActorCritic
 from .actor_critic_cnn import ActorCriticCNN
+from .actor_critic_dreamwaq import ActorCriticDreamWaQ
+from .actor_critic_dsr import ActorCriticDSR
 from .actor_critic_recurrent import ActorCriticRecurrent
 from .decoder import DecoderCollection
 from .rnd import RandomNetworkDistillation, resolve_rnd_config
@@ -17,6 +19,8 @@ from .symmetry import resolve_symmetry_config
 __all__ = [
     "ActorCritic",
     "ActorCriticCNN",
+    "ActorCriticDreamWaQ",
+    "ActorCriticDSR",
     "ActorCriticRecurrent",
     "DecoderCollection",
     "RandomNetworkDistillation",

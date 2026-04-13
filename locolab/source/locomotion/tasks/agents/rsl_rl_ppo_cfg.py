@@ -27,6 +27,67 @@ class RslRlPpoActorCriticRecurrentCfg(RslRlPpoActorCriticCfg):
 
 
 @configclass
+class RslRlPpoActorCriticDreamWaQCfg(RslRlPpoActorCriticCfg):
+    class_name: str = "ActorCriticDreamWaQ"
+    estimator_hidden_dims: list[int] = field(default_factory=lambda: [128, 64])
+    history_obs_set: str = "policy_history"
+    velocity_target_group: str = "dreamwaq_velocity"
+    context_latent_dim: int = 16
+    velocity_loss_weight: float = 1.0
+
+    # RVCL: Residual Value-Shaped Context Learning hyperparameters
+    # -- obs group names (direct obs keys, not obs_groups roles) --
+    proprio_critic_group: str = "proprio_critic"
+    event_height_target_group: str = "event_height_target"
+    event_contact_target_group: str = "event_contact_target"
+
+    # -- residual value shaping --
+    v_prop_hidden_dims: list[int] = field(default_factory=lambda: [256, 128])
+    delta_v_hidden_dims: list[int] = field(default_factory=lambda: [128, 64])
+    v_prop_loss_weight: float = 0.5
+    residual_loss_weight: float = 1.0
+
+    # -- EMA latent dynamics --
+    ema_tau: float = 0.995
+    transition_hidden_dims: list[int] = field(default_factory=lambda: [128, 64])
+    transition_loss_weight: float = 1.0
+
+    # -- event-aware auxiliary supervision --
+    event_decoder_hidden_dims: list[int] = field(default_factory=lambda: [128, 64])
+    event_height_loss_weight: float = 1.0
+    event_contact_loss_weight: float = 0.5
+
+    # -- KL regularization --
+    beta_vae_kl_weight: float = 0.01
+    free_bits: float = 0.05
+
+
+@configclass
+class RslRlPpoActorCriticDSRCfg(RslRlPpoActorCriticCfg):
+    """Config for dual-scale recurrent SLR-style context learning."""
+
+    class_name: str = "ActorCriticDSR"
+    velocity_target_group: str = "dsr_velocity"
+    response_target_group: str = "dsr_response_target"
+    frontend_hidden_dims: list[int] = field(default_factory=lambda: [128, 64])
+    fast_gru_hidden_dim: int = 64
+    slow_gru_hidden_dim: int = 64
+    dynamics_token_dim: int = 16
+    context_latent_dim: int = 16
+    context_head_hidden_dim: int = 32
+    gate_hidden_dim: int = 32
+    slow_update_interval: int = 2
+    transition_hidden_dims: list[int] = field(default_factory=lambda: [256, 128])
+    transition_horizon: int = 2
+    velocity_loss_weight: float = 1.0
+    transition_loss_weight: float = 1.0
+    triplet_loss_weight: float = 1.0
+    triplet_margin: float = 1.0
+    triplet_num_negatives: int = 64
+    triplet_chunk_size: int = 2048
+
+
+@configclass
 class RslRlPpoAlgorithmCfg:
     class_name: str = "PPO"
     num_learning_epochs: int = MISSING
@@ -72,7 +133,7 @@ class RslRlOnPolicyRunnerCfg:
 @configclass
 class BasePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 5000
+    max_iterations = 10000
     save_interval = 500
     experiment_name = ""  # same as task name
     empirical_normalization = False
@@ -92,7 +153,7 @@ class BasePPORunnerCfg(RslRlOnPolicyRunnerCfg):
         entropy_coef=0.01,
         num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=1.0e-4,
+        learning_rate=1.0e-3,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
@@ -138,11 +199,11 @@ class RecurrentDecoderPpoAlgorithmCfg(RslRlPpoAlgorithmCfg):
 @configclass
 class RecurrentDecoderPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 5000
+    max_iterations = 10000
     save_interval = 500
     experiment_name = ""
     empirical_normalization = True
-    # 默认使用 wandb 记录训练曲线，所有子类均生效
+    # Default to W&B logging for all Go2W decoder-based runners.
     logger = "wandb"
     wandb_project = "omnibot-go2w"
     obs_groups = {"policy": ["policy"], "critic": ["critic"]}
@@ -164,7 +225,7 @@ class RecurrentDecoderPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         entropy_coef=0.01,
         num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=1.0e-4,
+        learning_rate=3.0e-4,
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
@@ -215,3 +276,105 @@ class Go2WRoughRnnDecoderPPORunnerCfg(RecurrentDecoderPPORunnerCfg):
     def __post_init__(self) -> None:
         self.experiment_name = "omnibot_go2w_rough_rnn_v0"
         self.algorithm.desired_kl = 0.01
+
+
+@configclass
+class DreamWaQPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 24
+    max_iterations = 10000
+    save_interval = 500
+    experiment_name = ""
+    empirical_normalization = False
+    # Keep DreamWaQ runners aligned with main's default W&B workflow.
+    logger = "wandb"
+    wandb_project = "omnibot-go2w"
+    obs_groups = {"policy": ["policy"], "policy_history": ["policy_history"], "critic": ["critic"]}
+    policy = RslRlPpoActorCriticDreamWaQCfg(
+        init_noise_std=1.0,
+        actor_obs_normalization=True,
+        critic_obs_normalization=True,
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
+        estimator_hidden_dims=[128, 64],
+        activation="elu",
+        history_obs_set="policy_history",
+        velocity_target_group="dreamwaq_velocity",
+        context_latent_dim=16,
+        velocity_loss_weight=1.0,
+        # RVCL hyperparameters (defaults match RslRlPpoActorCriticDreamWaQCfg)
+    )
+    algorithm = RslRlPpoAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.01,
+        num_learning_epochs=5,
+        num_mini_batches=4,
+        learning_rate=1.0e-3,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+    )
+
+
+@configclass
+class Go2WFlatDreamWaQPPORunnerCfg(DreamWaQPPORunnerCfg):
+    def __post_init__(self) -> None:
+        self.experiment_name = "omnibot_go2w_flat_dreamwaq_v0"
+
+
+@configclass
+class Go2WRoughDreamWaQPPORunnerCfg(DreamWaQPPORunnerCfg):
+    def __post_init__(self) -> None:
+        self.experiment_name = "omnibot_go2w_rough_dreamwaq_v0"
+
+
+@configclass
+class DSRPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    """Runner config for DSR-CENet (Dual-Scale Recurrent Context Estimation Network)."""
+
+    num_steps_per_env = 24
+    max_iterations = 10000
+    save_interval = 500
+    experiment_name = ""
+    empirical_normalization = False
+    logger = "wandb"
+    wandb_project = "omnibot-go2w"
+    obs_groups = {"policy": ["policy"], "critic": ["critic"]}
+    policy = RslRlPpoActorCriticDSRCfg(
+        init_noise_std=1.0,
+        actor_obs_normalization=True,
+        critic_obs_normalization=True,
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
+        activation="elu",
+        velocity_target_group="dsr_velocity",
+    )
+    algorithm = RslRlPpoAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.01,
+        num_learning_epochs=5,
+        num_mini_batches=4,
+        learning_rate=1.0e-3,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+    )
+
+
+@configclass
+class Go2WFlatDSRPPORunnerCfg(DSRPPORunnerCfg):
+    def __post_init__(self) -> None:
+        self.experiment_name = "omnibot_go2w_flat_dsr_v0"
+
+
+@configclass
+class Go2WRoughDSRPPORunnerCfg(DSRPPORunnerCfg):
+    def __post_init__(self) -> None:
+        self.experiment_name = "omnibot_go2w_rough_dsr_v0"

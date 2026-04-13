@@ -40,10 +40,10 @@ GO2W_HIMLOCO_ROUGH_TERRAIN_CFG = terrain_gen.TerrainGeneratorCfg(
             proportion=0.1, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
         ),
         "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-            proportion=0.25, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
+            proportion=0.3, grid_width=0.45, grid_height_range=(0.05, 0.25), platform_width=2.0
         ),
         "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-            proportion=0.35,
+            proportion=0.25,
             step_height_range=(0.05, 0.23),
             step_width=0.3,
             platform_width=3.0,
@@ -51,7 +51,7 @@ GO2W_HIMLOCO_ROUGH_TERRAIN_CFG = terrain_gen.TerrainGeneratorCfg(
             holes=False,
         ),
         "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=0.2,
+            proportion=0.25,
             step_height_range=(0.05, 0.23),
             step_width=0.3,
             platform_width=3.0,
@@ -68,14 +68,14 @@ class Go2WRoughSceneCfg(Go2WSceneCfg):
 
     # Use a tighter footprint for base-height reward on rough terrain so the
     # target tracks the support region more closely near steps and boxes.
-    # base_height_scanner = RayCasterCfg(
-    #     prim_path="{ENV_REGEX_NS}/Robot/base",
-    #     offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
-    #     ray_alignment="yaw",
-    #     pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[0.6, 0.4]),
-    #     debug_vis=False,
-    #     mesh_prim_paths=["/World/ground"],
-    # )
+    base_height_scanner = RayCasterCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/base",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[0.6, 0.4]),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+    )
 
     def __post_init__(self):
         super().__post_init__()
@@ -160,6 +160,25 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
     Independently defined from LocomotionRewardsCfg (not inherited from Go2WRewardsCfg).
     """
 
+    base_height = RewTerm(
+        func=mdp.base_height_tolerance,
+        weight=-5.0,
+        params={
+            "target_height": 0.42,
+            "tolerance": 0.02,
+            "sensor_cfg": SceneEntityCfg("base_height_scanner"),
+        },
+    )
+    # track_lin_vel_xy_enhance = RewTerm(
+    #     func=mdp.track_lin_vel_xy_exp,
+    #     weight=1.5,
+    #     params={"command_name": "base_velocity", "std": math.sqrt(0.02)},
+    # )
+    # track_ang_vel_z_enhance = RewTerm(
+    #     func=mdp.track_ang_vel_z_exp,
+    #     weight=0.75,
+    #     params={"command_name": "base_velocity", "std": math.sqrt(0.02)},
+    # )
     # -- zero-command → run_still
     run_still = RewTerm(
         func=mdp.run_still,
@@ -168,6 +187,11 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
             "command_name": "base_velocity",
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
         },
+    )
+    action_smoothness = RewTerm(
+        func=mdp.action_smoothness_penalty,
+        weight=-0.002,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
 
     # -- contact regularization
@@ -184,7 +208,6 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
         weight=-0.1,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_foot"]),
-            "ratio_threshold": 3.0,
         },
     )
 
@@ -218,8 +241,7 @@ class Go2WRoughEnvCfg(Go2WFlatEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.commands.base_velocity.rel_standing_envs = 0.0
-        # self.scene.base_height_scanner.update_period = self.decimation * self.sim.dt
-        self.scene.terrain.max_init_terrain_level = 2
+        self.scene.base_height_scanner.update_period = self.decimation * self.sim.dt
         self.terminations.bad_orientation = None
 
 
@@ -230,3 +252,6 @@ class Go2WRoughPlayEnvCfg(Go2WRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 32
+        # Fewer terrain patches for easier visual inspection.
+        self.scene.terrain.terrain_generator.num_rows = 5
+        self.scene.terrain.terrain_generator.num_cols = 5
