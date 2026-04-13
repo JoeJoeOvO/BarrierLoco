@@ -31,17 +31,6 @@ gym.register(
     },
 )
 
-gym.register(
-    id="OmniBot-Go2W-Flat-DreamWaQ-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": f"{__name__}.Go2W.dreamwaq_env_cfg:Go2WFlatDreamWaQEnvCfg",
-        "play_env_cfg_entry_point": f"{__name__}.Go2W.dreamwaq_env_cfg:Go2WFlatDreamWaQPlayEnvCfg",
-        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WFlatDreamWaQPPORunnerCfg",
-    },
-)
-
 # Go2W Rough Terrain
 gym.register(
     id="OmniBot-Go2W-Rough-v0",
@@ -64,40 +53,6 @@ gym.register(
         "rsl_rl_cfg_entry_point": (
             "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WRoughRnnDecoderPPORunnerCfg"
         ),
-    },
-)
-
-gym.register(
-    id="OmniBot-Go2W-Rough-DreamWaQ-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": f"{__name__}.Go2W.dreamwaq_env_cfg:Go2WRoughDreamWaQEnvCfg",
-        "play_env_cfg_entry_point": f"{__name__}.Go2W.dreamwaq_env_cfg:Go2WRoughDreamWaQPlayEnvCfg",
-        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WRoughDreamWaQPPORunnerCfg",
-    },
-)
-
-# Go2W DSR-CENet (Dual-Scale Recurrent)
-gym.register(
-    id="OmniBot-Go2W-Flat-DSR-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": f"{__name__}.Go2W.dsr_env_cfg:Go2WFlatDSREnvCfg",
-        "play_env_cfg_entry_point": f"{__name__}.Go2W.dsr_env_cfg:Go2WFlatDSRPlayEnvCfg",
-        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WFlatDSRPPORunnerCfg",
-    },
-)
-
-gym.register(
-    id="OmniBot-Go2W-Rough-DSR-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": f"{__name__}.Go2W.dsr_env_cfg:Go2WRoughDSREnvCfg",
-        "play_env_cfg_entry_point": f"{__name__}.Go2W.dsr_env_cfg:Go2WRoughDSRPlayEnvCfg",
-        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WRoughDSRPPORunnerCfg",
     },
 )
 
