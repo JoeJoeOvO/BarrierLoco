@@ -76,6 +76,8 @@ class BasePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     save_interval = 500
     experiment_name = ""  # same as task name
     empirical_normalization = False
+    logger = "wandb"
+    wandb_project = "omnibot-go2w"
     obs_groups = {"policy": ["policy"], "critic": ["critic"]}
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
