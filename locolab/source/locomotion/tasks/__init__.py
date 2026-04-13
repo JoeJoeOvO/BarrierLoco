@@ -14,7 +14,9 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": f"{__name__}.Go2W.flat_env_cfg:Go2WFlatEnvCfg",
         "play_env_cfg_entry_point": f"{__name__}.Go2W.flat_env_cfg:Go2WFlatPlayEnvCfg",
-        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:BasePPORunnerCfg",
+        "rsl_rl_cfg_entry_point": (
+            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WFlatRnnDecoderPPORunnerCfg"
+        ),
     },
 )
 
@@ -39,7 +41,9 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": f"{__name__}.Go2W.rough_env_cfg:Go2WRoughEnvCfg",
         "play_env_cfg_entry_point": f"{__name__}.Go2W.rough_env_cfg:Go2WRoughPlayEnvCfg",
-        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:BasePPORunnerCfg",
+        "rsl_rl_cfg_entry_point": (
+            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WRoughRnnDecoderPPORunnerCfg"
+        ),
     },
 )
 
@@ -64,6 +68,8 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": f"{__name__}.Go2W.flat_env_cfg:Go2WFlatEnvCfg",
         "play_env_cfg_entry_point": f"{__name__}.Go2W.flat_env_cfg:Go2WFlatPlayEnvCfg",
-        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:BasePPORunnerCfg",
+        "rsl_rl_cfg_entry_point": (
+            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WFlatRnnDecoderPPORunnerCfg"
+        ),
     },
 )
