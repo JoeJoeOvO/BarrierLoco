@@ -15,6 +15,7 @@ from rsl_rl.env import VecEnv
 from rsl_rl.modules import (
     ActorCritic,
     ActorCriticCNN,
+    ActorCriticDreamWaQ,
     ActorCriticRecurrent,
     resolve_rnd_config,
     resolve_symmetry_config,
@@ -295,7 +296,7 @@ class OnPolicyRunner:
 
         # Initialize the policy
         actor_critic_class = resolve_callable(self.policy_cfg.pop("class_name"))
-        actor_critic: ActorCritic | ActorCriticRecurrent | ActorCriticCNN = actor_critic_class(
+        actor_critic: ActorCritic | ActorCriticRecurrent | ActorCriticCNN | ActorCriticDreamWaQ = actor_critic_class(
             obs, self.cfg["obs_groups"], self.env.num_actions, **self.policy_cfg
         ).to(self.device)
 

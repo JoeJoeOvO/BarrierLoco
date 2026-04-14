@@ -33,6 +33,19 @@ gym.register(
     },
 )
 
+gym.register(
+    id="OmniBot-Go2W-Flat-DreamWaQ-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.Go2W.dreamwaq_env_cfg:Go2WFlatDreamWaQEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.Go2W.dreamwaq_env_cfg:Go2WFlatDreamWaQPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": (
+            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WFlatDreamWaQPPORunnerCfg"
+        ),
+    },
+)
+
 # Go2W Rough Terrain
 gym.register(
     id="OmniBot-Go2W-Rough-v0",
@@ -56,6 +69,19 @@ gym.register(
         "play_env_cfg_entry_point": f"{__name__}.Go2W.rough_env_cfg:Go2WRoughPlayEnvCfg",
         "rsl_rl_cfg_entry_point": (
             "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WRoughRnnDecoderPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="OmniBot-Go2W-Rough-DreamWaQ-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.Go2W.dreamwaq_env_cfg:Go2WRoughDreamWaQEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.Go2W.dreamwaq_env_cfg:Go2WRoughDreamWaQPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": (
+            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WRoughDreamWaQPPORunnerCfg"
         ),
     },
 )
@@ -97,5 +123,31 @@ gym.register(
         "env_cfg_entry_point": f"{__name__}.WF_TRON1.rough_env_cfg:WFTRON1RoughEnvCfg",
         "play_env_cfg_entry_point": f"{__name__}.WF_TRON1.rough_env_cfg:WFTRON1RoughPlayEnvCfg",
         "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:WFTRON1RoughPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="OmniBot-WF-TRON1-Flat-DreamWaQ-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.WF_TRON1.dreamwaq_env_cfg:WFTRON1FlatDreamWaQEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.WF_TRON1.dreamwaq_env_cfg:WFTRON1FlatDreamWaQPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": (
+            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:WFTRON1FlatDreamWaQPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="OmniBot-WF-TRON1-Rough-DreamWaQ-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.WF_TRON1.dreamwaq_env_cfg:WFTRON1RoughDreamWaQEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.WF_TRON1.dreamwaq_env_cfg:WFTRON1RoughDreamWaQPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": (
+            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:WFTRON1RoughDreamWaQPPORunnerCfg"
+        ),
     },
 )
