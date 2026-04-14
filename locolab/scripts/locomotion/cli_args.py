@@ -37,6 +37,18 @@ def add_rsl_rl_args(parser: argparse.ArgumentParser):
     arg_group.add_argument(
         "--log_project_name", type=str, default=None, help="Name of the logging project when using wandb or neptune."
     )
+    arg_group.add_argument(
+        "--wandb_entity",
+        type=str,
+        default=None,
+        help="Weights & Biases entity/team name. Overrides WANDB_ENTITY or WANDB_USERNAME.",
+    )
+    arg_group.add_argument(
+        "--wandb_group",
+        type=str,
+        default=None,
+        help="Weights & Biases run group. Defaults to the experiment name when logger=wandb.",
+    )
 
 
 def parse_rsl_rl_cfg(task_name: str, args_cli: argparse.Namespace) -> RslRlOnPolicyRunnerCfg:
@@ -89,9 +101,16 @@ def update_rsl_rl_cfg(agent_cfg: RslRlOnPolicyRunnerCfg, args_cli: argparse.Name
     if agent_cfg.logger in {"wandb", "neptune"} and args_cli.log_project_name:
         agent_cfg.wandb_project = args_cli.log_project_name
         agent_cfg.neptune_project = args_cli.log_project_name
+    if agent_cfg.logger == "wandb" and args_cli.wandb_entity is not None:
+        agent_cfg.wandb_entity = args_cli.wandb_entity
+    if agent_cfg.logger == "wandb" and args_cli.wandb_group is not None:
+        agent_cfg.wandb_group = args_cli.wandb_group
 
     if agent_cfg.experiment_name == "":
         task_name = args_cli.task
         agent_cfg.experiment_name = task_name.lower().replace("-", "_").removesuffix("_play")
+
+    if agent_cfg.logger == "wandb" and agent_cfg.wandb_group is None:
+        agent_cfg.wandb_group = agent_cfg.experiment_name
 
     return agent_cfg

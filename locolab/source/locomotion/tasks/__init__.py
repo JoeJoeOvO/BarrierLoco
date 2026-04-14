@@ -73,3 +73,29 @@ gym.register(
         ),
     },
 )
+
+# ==============================================================================
+# WF_TRON1 Environments
+# ==============================================================================
+
+gym.register(
+    id="OmniBot-WF-TRON1-Flat-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.WF_TRON1.flat_env_cfg:WFTRON1FlatEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.WF_TRON1.flat_env_cfg:WFTRON1FlatPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:WFTRON1FlatPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="OmniBot-WF-TRON1-Rough-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.WF_TRON1.rough_env_cfg:WFTRON1RoughEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.WF_TRON1.rough_env_cfg:WFTRON1RoughPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:WFTRON1RoughPPORunnerCfg",
+    },
+)

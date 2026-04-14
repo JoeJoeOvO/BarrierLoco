@@ -73,3 +73,32 @@ class DelayedBadOrientation(_DelayedTerminationTerm):
         violation_mask = torch.acos(-asset.data.projected_gravity_b[:, 2]).abs() > limit_angle
         required_steps = self._resolve_required_steps(delay_steps=delay_steps)
         return self._apply_delay(violation_mask, required_steps)
+
+
+def terrain_out_of_bounds(
+    env: ManagerBasedRLEnv,
+    distance_buffer: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Terminate when the robot moves too close to the terrain-map edge."""
+    terrain_cfg = env.scene.cfg.terrain
+    if terrain_cfg.terrain_type == "plane":
+        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    if terrain_cfg.terrain_type != "generator":
+        raise ValueError("Received unsupported terrain type, must be either 'plane' or 'generator'.")
+
+    terrain_gen_cfg = env.scene.terrain.cfg.terrain_generator
+    grid_width, grid_length = terrain_gen_cfg.size
+    n_rows, n_cols = terrain_gen_cfg.num_rows, terrain_gen_cfg.num_cols
+    border_width = terrain_gen_cfg.border_width
+
+    map_width = n_rows * grid_width + 2 * border_width
+    map_height = n_cols * grid_length + 2 * border_width
+
+    asset: RigidObject = env.scene[asset_cfg.name]
+    x_out_of_bounds = torch.abs(asset.data.root_pos_w[:, 0]) > 0.5 * map_width - distance_buffer
+    y_out_of_bounds = torch.abs(asset.data.root_pos_w[:, 1]) > 0.5 * map_height - distance_buffer
+    return torch.logical_or(x_out_of_bounds, y_out_of_bounds)
+
+
+illegal_contact_delayed = DelayedIllegalContact
