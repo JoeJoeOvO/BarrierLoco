@@ -110,7 +110,7 @@ class Go2WRoughCommandsCfg(LocomotionCommandsCfg):
             lin_vel_x=(-1.0, 1.0), lin_vel_y=(-0.6, 0.6), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
         ),
         limit_ranges=mdp.UniformVelocityCommandYawFrameCfg.Ranges(
-            lin_vel_x=(-1.5, 1.5),
+            lin_vel_x=(-1.0, 1.0),
             lin_vel_y=(-0.6, 0.6),
             ang_vel_z=(-1.0, 1.0),
             heading=(-math.pi, math.pi),
@@ -137,16 +137,6 @@ class Go2WRoughCurriculumCfg(LocomotionCurriculumCfg):
         params={"command_name": "base_velocity"},
     )
 
-    lin_vel_cmd_levels = CurrTerm(
-        func=mdp.lin_vel_cmd_curriculum,
-        params={
-            "reward_term_name": "track_lin_vel_xy",
-            "reward_threshold": 0.8,
-            "step_size": 0.2,
-            "max_lin_vel_x": (-1.5, 1.5),
-        },
-    )
-
 
 # ==============================================================================
 # Go2W Rough Rewards Configuration
@@ -169,16 +159,6 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
             "sensor_cfg": SceneEntityCfg("base_height_scanner"),
         },
     )
-    # track_lin_vel_xy_enhance = RewTerm(
-    #     func=mdp.track_lin_vel_xy_exp,
-    #     weight=1.5,
-    #     params={"command_name": "base_velocity", "std": math.sqrt(0.02)},
-    # )
-    # track_ang_vel_z_enhance = RewTerm(
-    #     func=mdp.track_ang_vel_z_exp,
-    #     weight=0.75,
-    #     params={"command_name": "base_velocity", "std": math.sqrt(0.02)},
-    # )
     # -- zero-command → run_still
     run_still = RewTerm(
         func=mdp.run_still,
