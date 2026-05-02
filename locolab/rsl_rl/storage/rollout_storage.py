@@ -25,6 +25,7 @@ class RolloutStorage:
 
         def __init__(self) -> None:
             self.observations: TensorDict | None = None
+            self.next_observations: TensorDict | None = None
             self.actions: torch.Tensor | None = None
             self.privileged_actions: torch.Tensor | None = None
             self.rewards: torch.Tensor | None = None
@@ -55,6 +56,11 @@ class RolloutStorage:
 
         # Core
         self.observations = TensorDict(
+            {key: torch.zeros(num_transitions_per_env, *value.shape, device=device) for key, value in obs.items()},
+            batch_size=[num_transitions_per_env, num_envs],
+            device=self.device,
+        )
+        self.next_observations = TensorDict(
             {key: torch.zeros(num_transitions_per_env, *value.shape, device=device) for key, value in obs.items()},
             batch_size=[num_transitions_per_env, num_envs],
             device=self.device,
@@ -90,6 +96,8 @@ class RolloutStorage:
 
         # Core
         self.observations[self.step].copy_(transition.observations)
+        if transition.next_observations is not None:
+            self.next_observations[self.step].copy_(transition.next_observations)
         self.actions[self.step].copy_(transition.actions)
         self.rewards[self.step].copy_(transition.rewards.view(-1, 1))
         self.dones[self.step].copy_(transition.dones.view(-1, 1))
@@ -132,6 +140,8 @@ class RolloutStorage:
 
         # Core
         observations = self.observations.flatten(0, 1)
+        next_observations = self.next_observations.flatten(0, 1)
+        dones = self.dones.flatten(0, 1)
         actions = self.actions.flatten(0, 1)
         values = self.values.flatten(0, 1)
         returns = self.returns.flatten(0, 1)
@@ -151,11 +161,13 @@ class RolloutStorage:
 
                 # Create the mini-batch
                 obs_batch = observations[batch_idx]
+                next_obs_batch = next_observations[batch_idx]
+                dones_batch = dones[batch_idx]
                 actions_batch = actions[batch_idx]
                 target_values_batch = values[batch_idx]
+                advantages_batch = advantages[batch_idx]
                 returns_batch = returns[batch_idx]
                 old_actions_log_prob_batch = old_actions_log_prob[batch_idx]
-                advantages_batch = advantages[batch_idx]
                 old_mu_batch = old_mu[batch_idx]
                 old_sigma_batch = old_sigma[batch_idx]
 
@@ -166,6 +178,8 @@ class RolloutStorage:
                 # Yield the mini-batch
                 yield (
                     obs_batch,
+                    next_obs_batch,
+                    dones_batch,
                     actions_batch,
                     target_values_batch,
                     advantages_batch,
@@ -185,6 +199,7 @@ class RolloutStorage:
         if self.training_type != "rl":
             raise ValueError("This function is only available for reinforcement learning training.")
         padded_obs_trajectories, trajectory_masks = split_and_pad_trajectories(self.observations, self.dones)
+        padded_next_obs_trajectories, _ = split_and_pad_trajectories(self.next_observations, self.dones)
 
         mini_batch_size = self.num_envs // num_mini_batches
         for ep in range(num_epochs):
@@ -202,6 +217,8 @@ class RolloutStorage:
 
                 masks_batch = trajectory_masks[:, first_traj:last_traj]
                 obs_batch = padded_obs_trajectories[:, first_traj:last_traj]
+                next_obs_batch = padded_next_obs_trajectories[:, first_traj:last_traj]
+                dones_batch = self.dones[:, start:stop]
                 actions_batch = self.actions[:, start:stop]
                 old_mu_batch = self.mu[:, start:stop]
                 old_sigma_batch = self.sigma[:, start:stop]
@@ -238,6 +255,8 @@ class RolloutStorage:
                 # Yield the mini-batch
                 yield (
                     obs_batch,
+                    next_obs_batch,
+                    dones_batch,
                     actions_batch,
                     values_batch,
                     advantages_batch,

@@ -23,6 +23,19 @@ def gait_phase(env: ManagerBasedRLEnv, period: float) -> torch.Tensor:
     return phase
 
 
+def external_force_torque(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """External wrench applied to the configured body, flattened as force+torque."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    external_wrench = torch.zeros((env.num_envs, 6), device=env.device)
+    if asset._external_force_b is not None and asset._external_torque_b is not None:
+        external_wrench[:, :3] = asset._external_force_b[:, asset_cfg.body_ids[0]]
+        external_wrench[:, 3:] = asset._external_torque_b[:, asset_cfg.body_ids[0]]
+    return external_wrench
+
+
 def joint_acc(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """The joint acceleration of the asset."""
     # extract the used quantities (to enable type-hinting)

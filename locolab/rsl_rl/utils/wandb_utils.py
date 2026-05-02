@@ -30,13 +30,11 @@ class WandbSummaryWriter(SummaryWriter):
             project = cfg["wandb_project"]
         except KeyError:
             raise KeyError("Please specify wandb_project in the runner config, e.g. legged_gym.") from None
-        try:
-            entity = os.environ["WANDB_USERNAME"]
-        except KeyError:
-            entity = None
+        entity = cfg.get("wandb_entity") or os.environ.get("WANDB_ENTITY") or os.environ.get("WANDB_USERNAME")
+        group = cfg.get("wandb_group") or cfg.get("experiment_name")
 
         # Initialize wandb
-        wandb.init(project=project, entity=entity, name=run_name)
+        wandb.init(project=project, entity=entity, group=group, name=run_name)
         wandb.config.update({"log_dir": log_dir})
 
     def store_config(self, env_cfg: dict | object, train_cfg: dict) -> None:

@@ -10,7 +10,7 @@ from itertools import chain
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from rsl_rl.modules import ActorCritic, ActorCriticCNN, ActorCriticRecurrent, DecoderCollection
+from rsl_rl.modules import ActorCritic, ActorCriticCNN, ActorCriticDreamWaQ, ActorCriticRecurrent, DecoderCollection
 from rsl_rl.modules.rnd import RandomNetworkDistillation
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import resolve_callable, unpad_trajectories
@@ -20,12 +20,15 @@ from tensordict import TensorDict
 class PPO:
     """Proximal Policy Optimization algorithm (https://arxiv.org/abs/1707.06347)."""
 
-    policy: ActorCritic | ActorCriticRecurrent | ActorCriticCNN
+    policy: ActorCritic | ActorCriticRecurrent | ActorCriticCNN | ActorCriticDreamWaQ
     """The actor critic module."""
+
+    _normalize_auxiliary_by_mini_batches: bool = True
+    """If True, auxiliary loss is divided by num_mini_batches (legacy DreamWaQ behavior)."""
 
     def __init__(
         self,
-        policy: ActorCritic | ActorCriticRecurrent | ActorCriticCNN,
+        policy: ActorCritic | ActorCriticRecurrent | ActorCriticCNN | ActorCriticDreamWaQ,
         storage: RolloutStorage,
         num_learning_epochs: int = 5,
         num_mini_batches: int = 4,
@@ -176,6 +179,9 @@ class PPO:
         if self.rnd:
             self.rnd.update_normalization(obs)
 
+        # Record the next observations (obs after env.step is o_{t+1}).
+        self.transition.next_observations = obs
+
         # Record the rewards and dones
         # Note: We clone here because later on we bootstrap the rewards based on timeouts
         self.transition.rewards = rewards.clone()
@@ -222,6 +228,74 @@ class PPO:
         if not self.normalize_advantage_per_mini_batch:
             st.advantages = (st.advantages - st.advantages.mean()) / (st.advantages.std() + 1e-8)
 
+    def _compute_auxiliary_losses(
+        self,
+        obs_batch: TensorDict,
+        next_obs_batch: TensorDict,
+        dones_batch: torch.Tensor,
+        actions_batch: torch.Tensor,
+        returns_batch: torch.Tensor,
+    ) -> dict[str, torch.Tensor] | None:
+        # Fallback: if the policy exposes auxiliary losses but a specialized PPO
+        # subclass (for example PPODreamWaQ) is not used, warn and compute
+        # them so stale configs do not silently drop auxiliary objectives.
+        if hasattr(self.policy, "compute_auxiliary_losses"):
+            import warnings
+
+            warnings.warn(
+                f"Policy {type(self.policy).__name__} has auxiliary losses but is paired with base PPO. "
+                "Use the matching PPO subclass for correct behavior.",
+                stacklevel=2,
+            )
+            return self.policy.compute_auxiliary_losses(
+                obs_batch,
+                next_obs=next_obs_batch,
+                dones=dones_batch,
+                actions=actions_batch,
+                returns=returns_batch,
+            )
+        del obs_batch, next_obs_batch, dones_batch, actions_batch, returns_batch
+        return None
+
+    def _auxiliary_total_key(self) -> str | None:
+        if not hasattr(self.policy, "compute_auxiliary_losses"):
+            return None
+        # Subclasses (for example PPODreamWaQ) override this to return their
+        # specific key.  When the base PPO is paired with an auxiliary-loss
+        # policy via a stale config, try the common key names so the fallback
+        # path works instead of raising.
+        return "auxiliary_total"
+
+    def _optimize_additional_modules(
+        self,
+        obs_batch: TensorDict,
+        next_obs_batch: TensorDict,
+        dones_batch: torch.Tensor,
+        actions_batch: torch.Tensor,
+        returns_batch: torch.Tensor,
+    ) -> dict[str, float] | None:
+        del obs_batch, next_obs_batch, dones_batch, actions_batch, returns_batch
+
+    def get_additional_checkpoint_state(self) -> dict[str, object]:
+        return {}
+
+    def load_additional_checkpoint_state(self, loaded_dict: dict, load_optimizer: bool) -> None:
+        del loaded_dict, load_optimizer
+
+    def _compute_surrogate_loss(
+        self,
+        ratio: torch.Tensor,
+        advantages_batch: torch.Tensor,
+        returns_batch: torch.Tensor,
+        value_batch: torch.Tensor,
+    ) -> torch.Tensor:
+        del returns_batch, value_batch
+        surrogate = -torch.squeeze(advantages_batch) * ratio
+        surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(
+            ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
+        )
+        return torch.max(surrogate, surrogate_clipped).mean()
+
     def update(self) -> dict[str, float]:
         mean_value_loss = 0
         mean_surrogate_loss = 0
@@ -233,6 +307,8 @@ class PPO:
         # Decoder losses
         mean_actor_decoder_loss = 0 if self.actor_decoders else None
         mean_critic_decoder_loss = 0 if self.critic_decoders else None
+        mean_auxiliary_losses: dict[str, float] = {}
+        mean_additional_losses: dict[str, float] = {}
 
         # Get mini batch generator
         if self.policy.is_recurrent:
@@ -243,6 +319,8 @@ class PPO:
         # Iterate over batches
         for (
             obs_batch,
+            next_obs_batch,
+            dones_batch,
             actions_batch,
             target_values_batch,
             advantages_batch,
@@ -327,11 +405,12 @@ class PPO:
 
             # Surrogate loss
             ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
-            surrogate = -torch.squeeze(advantages_batch) * ratio
-            surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(
-                ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
+            surrogate_loss = self._compute_surrogate_loss(
+                ratio=ratio,
+                advantages_batch=advantages_batch,
+                returns_batch=returns_batch,
+                value_batch=value_batch,
             )
-            surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
 
             # Value function loss
             if self.use_clipped_value_loss:
@@ -370,6 +449,34 @@ class PPO:
                     )
                     critic_decoder_loss = critic_decoder_result["loss"]
                     loss = loss + self.critic_decoder_loss_weight * critic_decoder_loss
+
+            auxiliary_losses = self._compute_auxiliary_losses(
+                obs_batch,
+                next_obs_batch,
+                dones_batch,
+                actions_batch,
+                returns_batch,
+            )
+            if auxiliary_losses is not None:
+                auxiliary_total_key = self._auxiliary_total_key()
+                if auxiliary_total_key is None:
+                    raise ValueError("Auxiliary loss key must be defined when auxiliary losses are enabled.")
+                auxiliary_total = auxiliary_losses.pop(auxiliary_total_key, None)
+                if auxiliary_total is None:
+                    # Fallback: look for any key ending with '_total' so stale
+                    # configs do not silently disable auxiliary objectives.
+                    for key in list(auxiliary_losses):
+                        if key.endswith("_total"):
+                            auxiliary_total = auxiliary_losses.pop(key)
+                            break
+                if auxiliary_total is None:
+                    raise ValueError(f"Auxiliary loss hook must return a '{auxiliary_total_key}' entry.")
+                if self._normalize_auxiliary_by_mini_batches:
+                    loss = loss + auxiliary_total / self.num_mini_batches
+                else:
+                    loss = loss + auxiliary_total
+                for key, value in auxiliary_losses.items():
+                    mean_auxiliary_losses[key] = mean_auxiliary_losses.get(key, 0.0) + value.item()
 
             # Symmetry loss
             if self.symmetry:
@@ -448,6 +555,17 @@ class PPO:
             if self.rnd_optimizer:
                 self.rnd_optimizer.step()
 
+            additional_losses = self._optimize_additional_modules(
+                obs_batch,
+                next_obs_batch,
+                dones_batch,
+                actions_batch,
+                returns_batch,
+            )
+            if additional_losses is not None:
+                for key, value in additional_losses.items():
+                    mean_additional_losses[key] = mean_additional_losses.get(key, 0.0) + float(value)
+
             # Store the losses
             mean_value_loss += value_loss.item()
             mean_surrogate_loss += surrogate_loss.item()
@@ -477,6 +595,10 @@ class PPO:
             mean_actor_decoder_loss /= num_updates
         if mean_critic_decoder_loss is not None:
             mean_critic_decoder_loss /= num_updates
+        for key in mean_auxiliary_losses:
+            mean_auxiliary_losses[key] /= num_updates
+        for key in mean_additional_losses:
+            mean_additional_losses[key] /= num_updates
 
         # Clear the storage
         self.storage.clear()
@@ -495,6 +617,8 @@ class PPO:
             loss_dict["actor_decoder"] = mean_actor_decoder_loss
         if self.critic_decoders:
             loss_dict["critic_decoder"] = mean_critic_decoder_loss
+        loss_dict.update(mean_auxiliary_losses)
+        loss_dict.update(mean_additional_losses)
 
         return loss_dict
 

@@ -15,6 +15,7 @@ from rsl_rl.env import VecEnv
 from rsl_rl.modules import (
     ActorCritic,
     ActorCriticCNN,
+    ActorCriticDreamWaQ,
     ActorCriticRecurrent,
     resolve_rnd_config,
     resolve_symmetry_config,
@@ -157,6 +158,7 @@ class OnPolicyRunner:
             saved_dict["critic_decoders_state_dict"] = self.alg.critic_decoders.state_dict()
             if self.alg.critic_decoder_optimizer:
                 saved_dict["critic_decoder_optimizer_state_dict"] = self.alg.critic_decoder_optimizer.state_dict()
+        saved_dict.update(self.alg.get_additional_checkpoint_state())
         torch.save(saved_dict, path)
 
         # Upload model to external logging services
@@ -184,6 +186,7 @@ class OnPolicyRunner:
                 self.alg.actor_decoder_optimizer.load_state_dict(loaded_dict["actor_decoder_optimizer_state_dict"])
             if self.alg.critic_decoder_optimizer and "critic_decoder_optimizer_state_dict" in loaded_dict:
                 self.alg.critic_decoder_optimizer.load_state_dict(loaded_dict["critic_decoder_optimizer_state_dict"])
+        self.alg.load_additional_checkpoint_state(loaded_dict, load_optimizer and resumed_training)
         # Load current learning iteration
         if resumed_training:
             self.current_learning_iteration = loaded_dict["iter"]
@@ -295,7 +298,7 @@ class OnPolicyRunner:
 
         # Initialize the policy
         actor_critic_class = resolve_callable(self.policy_cfg.pop("class_name"))
-        actor_critic: ActorCritic | ActorCriticRecurrent | ActorCriticCNN = actor_critic_class(
+        actor_critic: ActorCritic | ActorCriticRecurrent | ActorCriticCNN | ActorCriticDreamWaQ = actor_critic_class(
             obs, self.cfg["obs_groups"], self.env.num_actions, **self.policy_cfg
         ).to(self.device)
 

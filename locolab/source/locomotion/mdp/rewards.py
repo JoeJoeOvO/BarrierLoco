@@ -66,6 +66,38 @@ def track_ang_vel_z_exp(
     return torch.exp(-ang_vel_error / std**2)
 
 
+def track_lin_vel_xy_yaw_frame_exp(
+    env: ManagerBasedRLEnv,
+    std: float,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward linear velocity tracking in the yaw-aligned body frame."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    vel_yaw = quat_apply_inverse(math_utils.yaw_quat(asset.data.root_quat_w), asset.data.root_lin_vel_w[:, :3])
+    lin_vel_error = torch.sum(
+        torch.square(env.command_manager.get_command(command_name)[:, :2] - vel_yaw[:, :2]),
+        dim=1,
+    )
+    reward = torch.exp(-lin_vel_error / std**2)
+    reward *= torch.clamp(-asset.data.projected_gravity_b[:, 2], 0.0, 0.7) / 0.7
+    return reward
+
+
+def track_ang_vel_z_world_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    std: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward yaw-rate tracking in world frame with an uprightness gate."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_w[:, 2])
+    reward = torch.exp(-ang_vel_error / std**2)
+    reward *= torch.clamp(-asset.data.projected_gravity_b[:, 2], 0.0, 0.7) / 0.7
+    return reward
+
+
 """
 Base stability rewards.
 """
@@ -150,6 +182,28 @@ def base_height_tolerance(
     mean_height = height.mean(dim=1)
 
     return torch.clamp(torch.abs(mean_height - target_height) - tolerance, min=0.0)
+
+
+def ang_vel_xy_yaw_l2_clip(
+    env: ManagerBasedRLEnv,
+    clip: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize roll/pitch angular velocity with clipping."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    penalty = torch.sum(torch.square(asset.data.root_ang_vel_b[:, :2]), dim=1)
+    return torch.clamp(penalty, max=clip)
+
+
+def lin_vel_z_w_l2_clip(
+    env: ManagerBasedRLEnv,
+    clip: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize world-frame z linear velocity with clipping."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    penalty = torch.square(asset.data.root_lin_vel_w[:, 2])
+    return torch.clamp(penalty, max=clip)
 
 
 def body_motion_penalty(
@@ -552,21 +606,30 @@ Action regularization.
 """
 
 
-def action_rate_l2_mask(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def action_rate_l2_mask(
+    env: ManagerBasedRLEnv,
+    mask: list[int] | None = None,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
     """Penalize the rate of change of specific actions using L2 squared kernel.
 
     Args:
         env: The environment object.
         asset_cfg: Configuration for the asset with joint_names to specify which actions to penalize.
     """
-    action_diff = (
-        env.action_manager.action[:, asset_cfg.joint_ids] - env.action_manager.prev_action[:, asset_cfg.joint_ids]
-    )
+    if mask is not None:
+        action_diff = env.action_manager.action[:, mask] - env.action_manager.prev_action[:, mask]
+    else:
+        action_diff = (
+            env.action_manager.action[:, asset_cfg.joint_ids] - env.action_manager.prev_action[:, asset_cfg.joint_ids]
+        )
     return torch.sum(torch.square(action_diff), dim=1)
 
 
 def action_smoothness_penalty(
-    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: ManagerBasedRLEnv,
+    mask: list[int] | None = None,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     """Penalize action jerk using second-order finite difference.
 
@@ -592,11 +655,16 @@ def action_smoothness_penalty(
         return torch.zeros(env.num_envs, device=env.device)
 
     # Compute second-order difference (jerk) on selected joints: current - 2*prev + prev_prev
-    second_diff = (
-        current_action[:, asset_cfg.joint_ids]
-        - 2 * prev_action[:, asset_cfg.joint_ids]
-        + env._action_smoothness_prev_prev_action[:, asset_cfg.joint_ids]
-    )
+    if mask is not None:
+        second_diff = (
+            current_action[:, mask] - 2 * prev_action[:, mask] + env._action_smoothness_prev_prev_action[:, mask]
+        )
+    else:
+        second_diff = (
+            current_action[:, asset_cfg.joint_ids]
+            - 2 * prev_action[:, asset_cfg.joint_ids]
+            + env._action_smoothness_prev_prev_action[:, asset_cfg.joint_ids]
+        )
 
     # Compute L2 squared penalty
     penalty = torch.sum(torch.square(second_diff), dim=1)

@@ -27,6 +27,20 @@ class RslRlPpoActorCriticRecurrentCfg(RslRlPpoActorCriticCfg):
 
 
 @configclass
+class RslRlPpoActorCriticDreamWaQCfg(RslRlPpoActorCriticCfg):
+    class_name: str = "ActorCriticDreamWaQ"
+    estimator_hidden_dims: list[int] = field(default_factory=lambda: [128])
+    context_decoder_hidden_dims: list[int] = field(default_factory=lambda: [64, 128])
+    history_obs_set: str = "policy_history"
+    velocity_target_group: str = "dreamwaq_velocity"
+    context_target_group: str = "policy"
+    context_latent_dim: int = 16
+    vae_sigma_min: float = 0.0
+    vae_sigma_max: float = 5.0
+    reconstruction_mask_indices: list[int] = field(default_factory=list)
+
+
+@configclass
 class RslRlPpoAlgorithmCfg:
     class_name: str = "PPO"
     num_learning_epochs: int = MISSING
@@ -47,6 +61,13 @@ class RslRlPpoAlgorithmCfg:
 
 
 @configclass
+class RslRlPpoDreamWaQAlgorithmCfg(RslRlPpoAlgorithmCfg):
+    class_name: str = "PPODreamWaQ"
+    vae_learning_rate: float = 1.0e-3
+    kl_weight: float = 0.1
+
+
+@configclass
 class RslRlOnPolicyRunnerCfg:
     class_name: str = "OnPolicyRunner"
     seed: int = 42
@@ -62,6 +83,8 @@ class RslRlOnPolicyRunnerCfg:
     logger: Literal["tensorboard", "neptune", "wandb"] = "tensorboard"
     neptune_project: str = "isaaclab"
     wandb_project: str = "isaaclab"
+    wandb_entity: str | None = None
+    wandb_group: str | None = None
     resume: bool = False
     load_run: str = ".*"
     load_checkpoint: str = "model_.*.pt"
@@ -101,6 +124,59 @@ class BasePPORunnerCfg(RslRlOnPolicyRunnerCfg):
         desired_kl=0.01,
         max_grad_norm=1.0,
     )
+
+
+@configclass
+class WFTRON1RoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 24
+    max_iterations = 20000
+    save_interval = 100
+    experiment_name = "limx_wf_tron1_rough"
+    empirical_normalization = False
+    logger = "wandb"
+    wandb_project = "omnibot-tron"
+    obs_groups = {"policy": ["policy"], "critic": ["critic"]}
+    policy = RslRlPpoActorCriticCfg(
+        init_noise_std=1.0,
+        actor_obs_normalization=False,
+        critic_obs_normalization=False,
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
+        activation="elu",
+    )
+    algorithm = RslRlPpoAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.01,
+        num_learning_epochs=5,
+        num_mini_batches=4,
+        learning_rate=1.0e-3,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+    )
+
+
+@configclass
+class WFTRON1FlatPPORunnerCfg(WFTRON1RoughPPORunnerCfg):
+    def __post_init__(self) -> None:
+        self.max_iterations = 5000
+        self.experiment_name = "limx_wf_tron1_flat"
+
+
+@configclass
+class Go2WFlatMLPPPORunnerCfg(BasePPORunnerCfg):
+    def __post_init__(self) -> None:
+        self.experiment_name = "omnibot_go2w_flat_mlp_v0"
+
+
+@configclass
+class Go2WRoughMLPPPORunnerCfg(BasePPORunnerCfg):
+    def __post_init__(self) -> None:
+        self.experiment_name = "omnibot_go2w_rough_mlp_v0"
 
 
 @configclass
@@ -217,3 +293,99 @@ class Go2WRoughRnnDecoderPPORunnerCfg(RecurrentDecoderPPORunnerCfg):
     def __post_init__(self) -> None:
         self.experiment_name = "omnibot_go2w_rough_rnn_v0"
         self.algorithm.desired_kl = 0.01
+
+
+@configclass
+class WFTRON1RoughRnnDecoderPPORunnerCfg(RecurrentDecoderPPORunnerCfg):
+    max_iterations = 20000
+    save_interval = 100
+    wandb_project = "omnibot-tron"
+
+    def __post_init__(self) -> None:
+        self.experiment_name = "limx_wf_tron1_rough_rnn_v0"
+        self.algorithm.desired_kl = 0.01
+
+
+@configclass
+class WFTRON1FlatRnnDecoderPPORunnerCfg(WFTRON1RoughRnnDecoderPPORunnerCfg):
+    def __post_init__(self) -> None:
+        self.max_iterations = 5000
+        self.experiment_name = "limx_wf_tron1_flat_rnn_v0"
+        self.algorithm.desired_kl = 0.01
+
+
+@configclass
+class DreamWaQPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 24
+    max_iterations = 10000
+    save_interval = 500
+    experiment_name = ""
+    empirical_normalization = False
+    logger = "wandb"
+    wandb_project = "omnibot-go2w"
+    obs_groups = {"policy": ["policy"], "policy_history": ["policy_history"], "critic": ["critic"]}
+    policy = RslRlPpoActorCriticDreamWaQCfg(
+        init_noise_std=1.0,
+        actor_obs_normalization=True,
+        critic_obs_normalization=True,
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
+        estimator_hidden_dims=[128],
+        context_decoder_hidden_dims=[64, 128],
+        activation="elu",
+        history_obs_set="policy_history",
+        velocity_target_group="dreamwaq_velocity",
+        context_target_group="policy",
+        context_latent_dim=16,
+        vae_sigma_min=0.0,
+        vae_sigma_max=5.0,
+        reconstruction_mask_indices=[],
+    )
+    algorithm = RslRlPpoDreamWaQAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.01,
+        num_learning_epochs=5,
+        num_mini_batches=4,
+        learning_rate=1.0e-3,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+        vae_learning_rate=1.0e-3,
+        kl_weight=1.0,
+    )
+
+
+@configclass
+class Go2WFlatDreamWaQPPORunnerCfg(DreamWaQPPORunnerCfg):
+    def __post_init__(self) -> None:
+        self.experiment_name = "omnibot_go2w_flat_dreamwaq_v0"
+
+
+@configclass
+class Go2WRoughDreamWaQPPORunnerCfg(DreamWaQPPORunnerCfg):
+    def __post_init__(self) -> None:
+        self.experiment_name = "omnibot_go2w_rough_dreamwaq_v0"
+
+
+@configclass
+class WFTRON1DreamWaQPPORunnerCfg(DreamWaQPPORunnerCfg):
+    max_iterations = 20000
+    save_interval = 100
+    wandb_project = "omnibot-tron"
+
+
+@configclass
+class WFTRON1RoughDreamWaQPPORunnerCfg(WFTRON1DreamWaQPPORunnerCfg):
+    def __post_init__(self) -> None:
+        self.experiment_name = "limx_wf_tron1_rough_dreamwaq"
+
+
+@configclass
+class WFTRON1FlatDreamWaQPPORunnerCfg(WFTRON1DreamWaQPPORunnerCfg):
+    def __post_init__(self) -> None:
+        self.max_iterations = 5000
+        self.experiment_name = "limx_wf_tron1_flat_dreamwaq"
