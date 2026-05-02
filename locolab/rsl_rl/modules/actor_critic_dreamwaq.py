@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, NoReturn
 
 import torch
@@ -7,6 +8,8 @@ import torch.nn as nn
 from rsl_rl.networks import MLP, EmpiricalNormalization
 from tensordict import TensorDict
 from torch.distributions import Normal
+
+from .dreamwaq_estimator import DreamWaQVAE
 
 
 class ActorCriticDreamWaQ(nn.Module):
@@ -23,7 +26,7 @@ class ActorCriticDreamWaQ(nn.Module):
         critic_obs_normalization: bool = False,
         actor_hidden_dims: tuple[int] | list[int] = [512, 256, 128],
         critic_hidden_dims: tuple[int] | list[int] = [512, 256, 128],
-        estimator_hidden_dims: tuple[int] | list[int] = [128, 64],
+        estimator_hidden_dims: tuple[int] | list[int] = [128],
         context_decoder_hidden_dims: tuple[int] | list[int] = [64, 128],
         activation: str = "elu",
         init_noise_std: float = 1.0,
@@ -33,9 +36,9 @@ class ActorCriticDreamWaQ(nn.Module):
         velocity_target_group: str = "dreamwaq_velocity",
         context_target_group: str = "policy",
         context_latent_dim: int = 16,
-        velocity_loss_weight: float = 1.0,
-        context_loss_weight: float = 1.0,
-        beta_vae_kl_weight: float = 1.0,
+        vae_sigma_min: float = 0.0,
+        vae_sigma_max: float = 5.0,
+        reconstruction_mask_indices: Sequence[int] | None = None,
         **kwargs: dict[str, Any],
     ) -> None:
         if kwargs:
@@ -50,9 +53,6 @@ class ActorCriticDreamWaQ(nn.Module):
         self.velocity_target_group = velocity_target_group
         self.context_target_group = context_target_group
         self.context_latent_dim = context_latent_dim
-        self.velocity_loss_weight = velocity_loss_weight
-        self.context_loss_weight = context_loss_weight
-        self.beta_vae_kl_weight = beta_vae_kl_weight
         self.state_dependent_std = state_dependent_std
         self.noise_std_type = noise_std_type
 
@@ -62,31 +62,18 @@ class ActorCriticDreamWaQ(nn.Module):
         num_velocity_targets = obs[self.velocity_target_group].shape[-1]
         num_context_targets = obs[self.context_target_group].shape[-1]
 
-        self.estimator_encoder = MLP(
-            input_dim=num_history_obs,
-            output_dim=estimator_hidden_dims[-1],
-            hidden_dims=estimator_hidden_dims[:-1] if len(estimator_hidden_dims) > 1 else [estimator_hidden_dims[0]],
+        self.vae = DreamWaQVAE(
+            history_obs_dim=num_history_obs,
+            reconstruction_obs_dim=num_context_targets,
+            velocity_dim=num_velocity_targets,
+            latent_dim=context_latent_dim,
+            encoder_hidden_dims=estimator_hidden_dims,
+            decoder_hidden_dims=context_decoder_hidden_dims,
             activation=activation,
+            sigma_min=vae_sigma_min,
+            sigma_max=vae_sigma_max,
+            reconstruction_mask_indices=reconstruction_mask_indices,
         )
-        self.velocity_head = nn.Linear(estimator_hidden_dims[-1], num_velocity_targets)
-        self.context_mean_head = nn.Linear(estimator_hidden_dims[-1], context_latent_dim)
-        self.context_logvar_head = nn.Linear(estimator_hidden_dims[-1], context_latent_dim)
-
-        if len(context_decoder_hidden_dims) > 1:
-            self.context_decoder_trunk = MLP(
-                input_dim=context_latent_dim,
-                output_dim=context_decoder_hidden_dims[-1],
-                hidden_dims=context_decoder_hidden_dims[:-1],
-                activation=activation,
-            )
-        else:
-            self.context_decoder_trunk = MLP(
-                input_dim=context_latent_dim,
-                output_dim=context_decoder_hidden_dims[0],
-                hidden_dims=[context_decoder_hidden_dims[0]],
-                activation=activation,
-            )
-        self.obs_decoder_head = nn.Linear(context_decoder_hidden_dims[-1], num_context_targets)
 
         actor_input_dim = num_actor_obs + num_velocity_targets + context_latent_dim
         if self.state_dependent_std:
@@ -95,8 +82,7 @@ class ActorCriticDreamWaQ(nn.Module):
             self.actor = MLP(actor_input_dim, num_actions, actor_hidden_dims, activation)
         self.critic = MLP(num_critic_obs, 1, critic_hidden_dims, activation)
 
-        print(f"DreamWaQ encoder: {self.estimator_encoder}")
-        print(f"DreamWaQ decoder trunk: {self.context_decoder_trunk}")
+        print(f"DreamWaQ VAE: {self.vae}")
         print(f"DreamWaQ actor MLP: {self.actor}")
         print(f"DreamWaQ critic MLP: {self.critic}")
 
@@ -133,11 +119,6 @@ class ActorCriticDreamWaQ(nn.Module):
                 raise ValueError(f"Unknown standard deviation type: {self.noise_std_type}.")
 
         self.distribution = None
-        self.cached_velocity_estimate = None
-        self.cached_context_sample = None
-        self.cached_context_mean = None
-        self.cached_context_logvar = None
-        self.cached_obs_reconstruction = None
 
         Normal.set_default_validate_args(False)
 
@@ -198,79 +179,86 @@ class ActorCriticDreamWaQ(nn.Module):
         if self.critic_obs_normalization:
             self.critic_obs_normalizer.update(self.get_critic_obs(obs))
 
-    def compute_auxiliary_losses(
+    def compute_dreamwaq_losses(
         self,
         obs: TensorDict,
         next_obs: TensorDict | None = None,
-        dones: torch.Tensor | None = None,
+        kld_weight: float = 1.0,
     ) -> dict[str, torch.Tensor]:
-        if self.cached_velocity_estimate is None:
-            raise RuntimeError("DreamWaQ auxiliary losses requested before actor features were computed.")
-
+        history_obs = self.actor_history_normalizer(self.get_history_obs(obs))
+        # Reconstruction target is the *next* observation (paper Eq.7).
+        # Fall back to current obs only when next_obs is unavailable.
+        reconstruction_source = next_obs if next_obs is not None else obs
+        context_target = reconstruction_source[self.context_target_group]
         velocity_target = obs[self.velocity_target_group]
-        context_target_obs = next_obs if next_obs is not None else obs
-        context_target = context_target_obs[self.context_target_group]
+        return self.vae.loss_fn(history_obs, context_target, velocity_target, kld_weight=kld_weight)
 
-        velocity_loss = nn.functional.mse_loss(self.cached_velocity_estimate, velocity_target)
-        context_kl_loss = self._kl_loss(self.cached_context_mean, self.cached_context_logvar)
-
-        if next_obs is not None and dones is not None:
-            not_done = (1.0 - dones.float()).squeeze(-1)
-            per_sample_recon = (self.cached_obs_reconstruction - context_target).pow(2).mean(dim=-1)
-            n_valid = not_done.sum().clamp(min=1.0)
-            obs_reconstruction_loss = (per_sample_recon * not_done).sum() / n_valid
-        else:
-            obs_reconstruction_loss = nn.functional.mse_loss(self.cached_obs_reconstruction, context_target)
-
-        total_loss = self.velocity_loss_weight * velocity_loss + self.context_loss_weight * (
-            obs_reconstruction_loss + self.beta_vae_kl_weight * context_kl_loss
-        )
-
-        return {
-            "dreamwaq_total": total_loss,
-            "dreamwaq_velocity": velocity_loss.detach(),
-            "dreamwaq_obs_reconstruction": obs_reconstruction_loss.detach(),
-            "dreamwaq_context_kl": context_kl_loss.detach(),
-        }
+    def get_vae_constraint_info(self, obs: TensorDict) -> dict[str, torch.Tensor | float]:
+        history_obs = self.actor_history_normalizer(self.get_history_obs(obs))
+        return self.vae.get_constrained_latent_params(history_obs)
 
     def load_state_dict(self, state_dict: dict, strict: bool = True) -> bool:
         state_dict = dict(state_dict)
-        old_prefix = "context_decoder."
-        if any(key.startswith(old_prefix) for key in state_dict):
-            print("Migrating legacy context_decoder keys to context_decoder_trunk + decoder heads")
-            migrated = {}
-            for key, value in list(state_dict.items()):
-                if key.startswith(old_prefix):
-                    migrated[key.replace(old_prefix, "context_decoder_trunk.", 1)] = value
-                    del state_dict[key]
-            state_dict.update(migrated)
-            strict = False
-        if any(key.startswith("vel_decoder_head.") for key in state_dict):
-            print("Dropping legacy vel_decoder_head keys")
-            state_dict = {key: value for key, value in state_dict.items() if not key.startswith("vel_decoder_head.")}
-            strict = False
-        super().load_state_dict(state_dict, strict=strict)
-        return True
+        remapped_state_dict: dict[str, torch.Tensor] = {}
+        legacy_prefixes = {
+            "estimator_encoder.": "vae.encoder.",
+            "velocity_head.": "vae.vel_mu.",
+            "context_mean_head.": "vae.latent_mu.",
+            "context_logvar_head.": "vae.latent_logvar.",
+            "latent_var.": "vae.latent_logvar.",
+            "vel_var.": "vae.vel_logvar.",
+            "vae.latent_var.": "vae.latent_logvar.",
+            "vae.vel_var.": "vae.vel_logvar.",
+        }
+        remapped_legacy = False
+        for key, value in state_dict.items():
+            new_key = key
+            for legacy_prefix, new_prefix in legacy_prefixes.items():
+                if key.startswith(legacy_prefix):
+                    new_key = key.replace(legacy_prefix, new_prefix, 1)
+                    remapped_legacy = True
+                    break
+            remapped_state_dict[new_key] = value
+
+        current_state_dict = super().state_dict()
+        compatible_state_dict: dict[str, torch.Tensor] = {}
+        dropped_keys: list[str] = []
+        for key, value in remapped_state_dict.items():
+            if key in current_state_dict and current_state_dict[key].shape == value.shape:
+                compatible_state_dict[key] = value
+            else:
+                dropped_keys.append(key)
+
+        if dropped_keys:
+            print(f"DreamWaQ: Dropping {len(dropped_keys)} incompatible keys: {dropped_keys[:6]}...")
+
+        load_result = super().load_state_dict(compatible_state_dict, strict=False)
+        missing_count = len(load_result.missing_keys)
+        unexpected_count = len(load_result.unexpected_keys)
+        if missing_count or unexpected_count:
+            print(
+                "DreamWaQ: checkpoint loaded with missing/unexpected keys "
+                f"(missing={missing_count}, unexpected={unexpected_count})."
+            )
+
+        # Treat as cold start only when weights were reshaped or renamed — in those
+        # cases the optimizer state from the checkpoint no longer aligns with the
+        # current parameters. Pure missing/unexpected keys from model evolution
+        # still permit a genuine resume.
+        return not (remapped_legacy or dropped_keys)
 
     def _compute_actor_input(self, obs: TensorDict, sample_latent: bool) -> torch.Tensor:
         actor_obs = self.actor_obs_normalizer(self.get_actor_obs(obs))
         history_obs = self.actor_history_normalizer(self.get_history_obs(obs))
-        estimator_features = self.estimator_encoder(history_obs)
+        if sample_latent:
+            (context_sample, velocity_sample), _ = self.vae(history_obs)
+        else:
+            context_sample, velocity_sample = self.vae.inference(history_obs)
 
-        velocity_estimate = self.velocity_head(estimator_features)
-        context_mean = self.context_mean_head(estimator_features)
-        context_logvar = self.context_logvar_head(estimator_features)
-        context_sample = self._sample_context(context_mean, context_logvar, sample_latent)
-        decoder_features = self.context_decoder_trunk(context_sample)
-        obs_reconstruction = self.obs_decoder_head(decoder_features)
-
-        self.cached_velocity_estimate = velocity_estimate
-        self.cached_context_mean = context_mean
-        self.cached_context_logvar = context_logvar
-        self.cached_context_sample = context_sample
-        self.cached_obs_reconstruction = obs_reconstruction
-
-        return torch.cat((actor_obs, velocity_estimate, context_sample), dim=-1)
+        # Detach VAE outputs so PPO policy gradients do not flow back into the
+        # VAE encoder.  The VAE is trained by its own dedicated optimizer in
+        # PPODreamWaQ._optimize_additional_modules.
+        return torch.cat((actor_obs, velocity_sample.detach(), context_sample.detach()), dim=-1)
 
     def _update_distribution(self, actor_input: torch.Tensor) -> None:
         if self.state_dependent_std:
@@ -299,14 +287,3 @@ class ActorCriticDreamWaQ(nn.Module):
             assert len(obs[group].shape) == 2, "The DreamWaQ policy only supports 1D observations."
             obs_dim += obs[group].shape[-1]
         return obs_dim
-
-    @staticmethod
-    def _sample_context(mean: torch.Tensor, logvar: torch.Tensor, sample_latent: bool) -> torch.Tensor:
-        if sample_latent:
-            std = torch.exp(0.5 * logvar)
-            return mean + torch.randn_like(std) * std
-        return mean
-
-    @staticmethod
-    def _kl_loss(mean: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
-        return -0.5 * torch.mean(torch.sum(1 + logvar - mean.pow(2) - logvar.exp(), dim=-1))

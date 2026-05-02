@@ -34,6 +34,17 @@ gym.register(
 )
 
 gym.register(
+    id="OmniBot-Go2W-Flat-MLP-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.Go2W.flat_env_cfg:Go2WFlatEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.Go2W.flat_env_cfg:Go2WFlatPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WFlatMLPPPORunnerCfg",
+    },
+)
+
+gym.register(
     id="OmniBot-Go2W-Flat-DreamWaQ-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
@@ -70,6 +81,17 @@ gym.register(
         "rsl_rl_cfg_entry_point": (
             "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WRoughRnnDecoderPPORunnerCfg"
         ),
+    },
+)
+
+gym.register(
+    id="OmniBot-Go2W-Rough-MLP-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.Go2W.rough_env_cfg:Go2WRoughEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.Go2W.rough_env_cfg:Go2WRoughPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WRoughMLPPPORunnerCfg",
     },
 )
 
@@ -116,7 +138,29 @@ gym.register(
 )
 
 gym.register(
+    id="OmniBot-WF-TRON1-Flat-MLP-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.WF_TRON1.flat_env_cfg:WFTRON1FlatEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.WF_TRON1.flat_env_cfg:WFTRON1FlatPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:WFTRON1FlatPPORunnerCfg",
+    },
+)
+
+gym.register(
     id="OmniBot-WF-TRON1-Rough-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.WF_TRON1.rough_env_cfg:WFTRON1RoughEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.WF_TRON1.rough_env_cfg:WFTRON1RoughPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:WFTRON1RoughPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="OmniBot-WF-TRON1-Rough-MLP-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
@@ -140,6 +184,19 @@ gym.register(
 )
 
 gym.register(
+    id="OmniBot-WF-TRON1-Flat-Rnn-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.WF_TRON1.flat_env_cfg:WFTRON1FlatEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.WF_TRON1.flat_env_cfg:WFTRON1FlatPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": (
+            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:WFTRON1FlatRnnDecoderPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
     id="OmniBot-WF-TRON1-Rough-DreamWaQ-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
@@ -148,6 +205,19 @@ gym.register(
         "play_env_cfg_entry_point": f"{__name__}.WF_TRON1.dreamwaq_env_cfg:WFTRON1RoughDreamWaQPlayEnvCfg",
         "rsl_rl_cfg_entry_point": (
             "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:WFTRON1RoughDreamWaQPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="OmniBot-WF-TRON1-Rough-Rnn-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.WF_TRON1.rough_env_cfg:WFTRON1RoughEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.WF_TRON1.rough_env_cfg:WFTRON1RoughPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": (
+            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:WFTRON1RoughRnnDecoderPPORunnerCfg"
         ),
     },
 )
