@@ -1,2 +1,4 @@
+from .jump_command import BinaryJumpCommand, JumpPhase
+from .jump_command_cfg import BinaryJumpCommandCfg
 from .velocity_command import UniformVelocityCommandYawFrame
 from .velocity_command_cfg import UniformVelocityCommandYawFrameCfg

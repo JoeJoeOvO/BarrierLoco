@@ -23,6 +23,26 @@ def gait_phase(env: ManagerBasedRLEnv, period: float) -> torch.Tensor:
     return phase
 
 
+def velocity_and_jump_commands(
+    env: ManagerBasedEnv,
+    velocity_command_name: str = "base_velocity",
+    jump_command_name: str = "jump_command",
+) -> torch.Tensor:
+    """Return ``[lin_vel_x, lin_vel_y, ang_vel_z, jump_trigger]``."""
+    velocity_command = env.command_manager.get_command(velocity_command_name)
+    jump_command = env.command_manager.get_command(jump_command_name)
+    return torch.cat((velocity_command[:, :3], jump_command[:, :1]), dim=-1)
+
+
+def jump_phase(env: ManagerBasedEnv, command_name: str = "jump_command") -> torch.Tensor:
+    """Return normalized one-shot phase for critic-only conditioning."""
+    term = env.command_manager.get_term(command_name)
+    if not hasattr(term, "normalized_phase"):
+        raise TypeError(f"Command term {command_name!r} does not expose a normalized jump phase.")
+    term.update_state()
+    return term.normalized_phase.unsqueeze(-1)
+
+
 def external_force_torque(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),

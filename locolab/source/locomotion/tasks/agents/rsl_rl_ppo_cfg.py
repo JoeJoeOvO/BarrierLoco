@@ -174,6 +174,20 @@ class Go2WFlatMLPPPORunnerCfg(BasePPORunnerCfg):
 
 
 @configclass
+class Go2WJumpMLPPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.max_iterations = 5000
+        # Preserve the validated checkpoint tree while exposing one canonical Jump task.
+        self.experiment_name = "omnibot_go2w_jump_olympus_mlp_v0"
+
+
+@configclass
+class Go2WJumpFlatPretrainMLPPPORunnerCfg(Go2WJumpMLPPPORunnerCfg):
+    """Store observation-compatible Flat checkpoints in the Jump resume tree."""
+
+
+@configclass
 class Go2WHandstandPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
     def __post_init__(self) -> None:
         super().__post_init__()

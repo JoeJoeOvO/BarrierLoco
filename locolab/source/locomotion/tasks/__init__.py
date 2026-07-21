@@ -45,6 +45,30 @@ gym.register(
 )
 
 gym.register(
+    id="OmniBot-Go2W-Jump-MLP-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.Go2W.jump_env_cfg:Go2WJumpEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.Go2W.jump_env_cfg:Go2WJumpPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": ("locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WJumpMLPPPORunnerCfg"),
+    },
+)
+
+gym.register(
+    id="OmniBot-Go2W-Jump-Flat-Pretrain-MLP-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (f"{__name__}.Go2W.jump_flat_pretrain_env_cfg:Go2WJumpFlatPretrainEnvCfg"),
+        "play_env_cfg_entry_point": (f"{__name__}.Go2W.jump_flat_pretrain_env_cfg:Go2WJumpFlatPretrainPlayEnvCfg"),
+        "rsl_rl_cfg_entry_point": (
+            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:" "Go2WJumpFlatPretrainMLPPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
     id="OmniBot-Go2W-Handstand-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
