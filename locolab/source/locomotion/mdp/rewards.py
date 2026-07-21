@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import torch
@@ -10,7 +11,7 @@ except ImportError:
     from isaaclab.utils.math import quat_rotate_inverse as quat_apply_inverse
 
 from isaaclab.assets import Articulation, RigidObject
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import ManagerTermBase, RewardTermCfg, SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils import math as math_utils
 
@@ -641,56 +642,90 @@ def action_rate_l2_mask(
     return torch.sum(torch.square(action_diff), dim=1)
 
 
-def action_smoothness_penalty(
-    env: ManagerBasedRLEnv,
-    mask: list[int] | None = None,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-) -> torch.Tensor:
-    """Penalize action jerk using second-order finite difference.
+class ActionSmoothnessPenalty(ManagerTermBase):
+    """Penalize action jerk while keeping reset-aware history inside the reward term."""
 
-    Computes the second derivative of actions: current - 2*prev + prev_prev.
-    Returns zero penalty for the first 3 steps (startup phase masking).
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        active_terms = list(env.action_manager.active_terms)
+        term_dims = list(env.action_manager.action_term_dim)
+        if len(active_terms) != len(term_dims):
+            raise ValueError("Action term names and dimensions must have the same length.")
+        total_action_dim = sum(term_dims)
 
-    Args:
-        env: The environment object.
-        asset_cfg: Configuration for the asset with joint_names to specify which actions to penalize.
-    """
-    # Get full action tensors
-    current_action = env.action_manager.action
-    prev_action = env.action_manager.prev_action
+        requested_terms = cfg.params.get("action_term_names")
+        requested_indices = cfg.params.get("mask")
+        if requested_terms is not None and requested_indices is not None:
+            raise ValueError("Specify action term names or a direct action mask, not both.")
 
-    # Initialize prev_prev_action on first call (store full action, not sliced)
-    if not hasattr(env, "_action_smoothness_prev_prev_action"):
-        env._action_smoothness_prev_prev_action = prev_action.clone()
-        return torch.zeros(env.num_envs, device=env.device)
+        if requested_indices is not None:
+            action_indices = list(requested_indices)
+            if len(action_indices) != len(set(action_indices)):
+                raise ValueError("Action indices for smoothness must be unique.")
+            invalid_indices = [index for index in action_indices if index < 0 or index >= total_action_dim]
+            if invalid_indices:
+                raise ValueError(f"Invalid action indices for smoothness: {invalid_indices}")
+            self._action_term_names: tuple[str, ...] | None = None
+        else:
+            if requested_terms is None:
+                requested_terms = active_terms
+            if len(requested_terms) != len(set(requested_terms)):
+                raise ValueError("Action term names for smoothness must be unique.")
+            unknown_terms = set(requested_terms).difference(active_terms)
+            if unknown_terms:
+                raise ValueError(f"Unknown action terms for smoothness: {sorted(unknown_terms)}")
 
-    # Check for shape mismatch (can happen after reset) and reinitialize if needed
-    if env._action_smoothness_prev_prev_action.shape != prev_action.shape:
-        env._action_smoothness_prev_prev_action = prev_action.clone()
-        return torch.zeros(env.num_envs, device=env.device)
+            requested_set = set(requested_terms)
+            action_indices = []
+            offset = 0
+            for term_name, term_dim in zip(active_terms, term_dims):
+                if term_name in requested_set:
+                    action_indices.extend(range(offset, offset + term_dim))
+                offset += term_dim
+            self._action_term_names = tuple(requested_terms)
+        if not action_indices:
+            raise ValueError("At least one action term is required for action smoothness.")
 
-    # Compute second-order difference (jerk) on selected joints: current - 2*prev + prev_prev
-    if mask is not None:
-        second_diff = (
-            current_action[:, mask] - 2 * prev_action[:, mask] + env._action_smoothness_prev_prev_action[:, mask]
-        )
-    else:
-        second_diff = (
-            current_action[:, asset_cfg.joint_ids]
-            - 2 * prev_action[:, asset_cfg.joint_ids]
-            + env._action_smoothness_prev_prev_action[:, asset_cfg.joint_ids]
-        )
+        first_index = action_indices[0]
+        if action_indices == list(range(first_index, first_index + len(action_indices))):
+            self._action_selector: slice | torch.Tensor = slice(first_index, first_index + len(action_indices))
+        else:
+            self._action_selector = torch.tensor(action_indices, device=env.device, dtype=torch.long)
+        self._prev_prev_action = torch.zeros(env.num_envs, len(action_indices), device=env.device)
+        self._cached_penalty = torch.zeros(env.num_envs, device=env.device)
+        self._last_step: int | None = None
 
-    # Compute L2 squared penalty
-    penalty = torch.sum(torch.square(second_diff), dim=1)
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        selected_envs = slice(None) if env_ids is None else env_ids
+        self._prev_prev_action[selected_envs] = 0.0
+        self._cached_penalty[selected_envs] = 0.0
 
-    # Mask penalty for startup phase (first 3 steps)
-    penalty = torch.where(env.episode_length_buf < 3, torch.zeros_like(penalty), penalty)
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        action_term_names: Sequence[str] | None = None,
+        mask: Sequence[int] | None = None,
+    ) -> torch.Tensor:
+        del action_term_names, mask  # resolved once during construction
+        step = int(env.common_step_counter)
+        if step == self._last_step:
+            return self._cached_penalty
 
-    # Update prev_prev_action for next step (store full action)
-    env._action_smoothness_prev_prev_action = prev_action.clone()
+        current_action = env.action_manager.action[:, self._action_selector]
+        previous_action = env.action_manager.prev_action[:, self._action_selector]
+        second_difference = current_action - 2.0 * previous_action + self._prev_prev_action
+        penalty = torch.sum(torch.square(second_difference), dim=1)
+        penalty.masked_fill_(env.episode_length_buf < 3, 0.0)
 
-    return penalty
+        self._cached_penalty.copy_(penalty)
+        self._prev_prev_action.copy_(previous_action)
+        self._last_step = step
+        return self._cached_penalty
+
+
+# Backward-compatible name for existing task configurations. It resolves to
+# the stateful ManagerTermBase implementation rather than the former function.
+action_smoothness_penalty = ActionSmoothnessPenalty
 
 
 # ==============================================================================

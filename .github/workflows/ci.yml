@@ -7,50 +7,102 @@ on:
     branches: [main]
 
 jobs:
-  lint:
+  quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.10"
 
-      - name: Install dependencies
+      - name: Install quality tools
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip
-          pip install black isort flake8 mypy
+          python -m pip install black isort flake8
 
-      - name: Check formatting with black
-        run: black --check .
+      - name: Check Python formatting
+        run: |
+          set -euo pipefail
+          python -m black --check .
+          python -m isort --check-only --profile black .
 
-      - name: Check imports with isort
-        run: isort --check-only --profile black .
+      - name: Lint Python
+        run: |
+          set -euo pipefail
+          # Project-wide flake8 configuration lives in .flake8.
+          python -m flake8 .
 
-      - name: Lint with flake8
-        run: flake8 .  # config from setup.cfg
-
-  test:
+  unit-and-types:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.10"
 
-      - name: Install dependencies
+      - name: Install test dependencies
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip
-          pip install pytest pytest-cov
+          python -m pip install mypy numpy pytest pytest-cov
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
 
-      - name: Install locolab
+      - name: Install LocoLab
         run: |
-          cd locolab
-          pip install -e . || true
+          set -euo pipefail
+          python -m pip install -e ./locolab
 
-      - name: Run tests
+      - name: Run fast tests and syntax checks
         run: |
-          pytest --cov=locolab --cov-report=xml || true
+          set -euo pipefail
+          python -m compileall -q locolab tests .github/scripts
+          python -m pytest --cov=locolab --cov-report=xml
+
+      - name: Type-check packaging tools
+        run: |
+          set -euo pipefail
+          python -m mypy --follow-imports=skip locolab/setup.py .github/scripts/check_locolab_dist.py
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+
+      - name: Build and validate wheel and sdist
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          python -m build --sdist --wheel --outdir dist locolab
+          python -m twine check dist/*
+
+          wheels=(dist/*.whl)
+          sdists=(dist/*.tar.gz)
+          test "${#wheels[@]}" -eq 1
+          test "${#sdists[@]}" -eq 1
+          python .github/scripts/check_locolab_dist.py --wheel "${wheels[0]}" --sdist "${sdists[0]}"
+
+      - name: Smoke-test installed runtime resources
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          python -m venv "${RUNNER_TEMP}/locolab-package-smoke"
+          "${RUNNER_TEMP}/locolab-package-smoke/bin/python" -m pip install --no-deps "${wheels[0]}"
+          "${RUNNER_TEMP}/locolab-package-smoke/bin/python" -I .github/scripts/check_locolab_dist.py --installed

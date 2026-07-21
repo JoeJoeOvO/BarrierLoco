@@ -60,7 +60,11 @@ def reset_robot_state_multi_pose(
     sample_joint_positions_from_limits: bool = False,
     asset_cfg=None,
 ) -> None:
-    """Reset root and joints from one shared recovery-pose sample."""
+    """Reset root and joints from one shared recovery-pose sample.
+
+    Normal poses always perturb the default joint positions. Limit sampling is
+    restricted to special poses without an explicit joint-position range.
+    """
     from isaaclab.managers import SceneEntityCfg
     from isaaclab.utils import math as math_utils
 
@@ -84,17 +88,6 @@ def reset_robot_state_multi_pose(
     joint_velocities = asset.data.default_joint_vel[env_ids][:, joint_ids].clone()
     joint_position_limits = asset.data.soft_joint_pos_limits[env_ids][:, joint_ids]
     joint_velocity_limits = asset.data.soft_joint_vel_limits[env_ids][:, joint_ids]
-
-    if sample_joint_positions_from_limits:
-        finite_limits = (
-            torch.isfinite(joint_position_limits[..., 0])
-            & torch.isfinite(joint_position_limits[..., 1])
-            & (joint_position_limits[..., 1] > joint_position_limits[..., 0])
-        )
-        lower = torch.where(finite_limits, joint_position_limits[..., 0], joint_positions)
-        upper = torch.where(finite_limits, joint_position_limits[..., 1], joint_positions)
-        sampled = math_utils.sample_uniform(lower, upper, joint_positions.shape, asset.device)
-        joint_positions = torch.where(finite_limits, sampled, joint_positions)
 
     for pose_index, pose_name in enumerate(pose_names):
         selected = torch.nonzero(pose_indices == pose_index, as_tuple=False).squeeze(-1)
@@ -135,7 +128,23 @@ def reset_robot_state_multi_pose(
         orientations[selected] = math_utils.quat_mul(orientations[selected], orientation_delta)
         velocities[selected] += velocity_samples
 
-        if not sample_joint_positions_from_limits:
+        sample_pose_joints_from_limits = pose is not None and pose.get(
+            "sample_joint_positions_from_limits",
+            sample_joint_positions_from_limits and "joint_position_range" not in pose,
+        )
+        if sample_pose_joints_from_limits:
+            selected_limits = joint_position_limits[selected]
+            selected_defaults = joint_positions[selected]
+            finite_limits = (
+                torch.isfinite(selected_limits[..., 0])
+                & torch.isfinite(selected_limits[..., 1])
+                & (selected_limits[..., 1] > selected_limits[..., 0])
+            )
+            lower = torch.where(finite_limits, selected_limits[..., 0], selected_defaults)
+            upper = torch.where(finite_limits, selected_limits[..., 1], selected_defaults)
+            sampled = math_utils.sample_uniform(lower, upper, selected_defaults.shape, asset.device)
+            joint_positions[selected] = torch.where(finite_limits, sampled, selected_defaults)
+        else:
             joint_positions[selected] += math_utils.sample_uniform(
                 *joint_position_range,
                 joint_positions[selected].shape,

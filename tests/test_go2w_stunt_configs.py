@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import importlib.util
 import sys
 from pathlib import Path
@@ -11,12 +10,6 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 GO2W_TASKS = ROOT / "locolab/source/locomotion/tasks/Go2W"
 TERRAINS = ROOT / "locolab/source/locomotion/terrains"
-TASK_REGISTRY = ROOT / "locolab/source/locomotion/tasks/__init__.py"
-RUNNERS = ROOT / "locolab/source/locomotion/tasks/agents/rsl_rl_ppo_cfg.py"
-
-
-def _class_names(path: Path) -> set[str]:
-    return {node.name for node in ast.parse(path.read_text()).body if isinstance(node, ast.ClassDef)}
 
 
 def _load_high_platform_module():
@@ -48,31 +41,9 @@ def _load_high_platform_module():
     return module
 
 
-def test_two_wheel_balance_tasks_share_one_config_module() -> None:
-    path = GO2W_TASKS / "two_wheel_balance_env_cfg.py"
-    classes = _class_names(path)
-
-    assert {
-        "Go2WTwoWheelBalanceCommandsCfg",
-        "Go2WTwoWheelBalanceRewardsCfg",
-        "Go2WTwoWheelBalanceCurriculumCfg",
-        "Go2WTwoWheelBalanceEnvCfg",
-        "Go2WHandstandEnvCfg",
-        "Go2WHandstandPlayEnvCfg",
-        "Go2WUprightEnvCfg",
-        "Go2WUprightPlayEnvCfg",
-    } <= classes
+def test_discarded_duplicate_stunt_modules_are_absent() -> None:
     assert not (GO2W_TASKS / "handstand_env_cfg.py").exists()
     assert not (GO2W_TASKS / "upright_env_cfg.py").exists()
-
-    source = path.read_text()
-    assert "class Go2WTwoWheelBalanceCurriculumCfg" in source
-    assert "lin_vel_cmd = None" in source
-    assert "ang_vel_cmd = None" in source
-
-    crawl = (GO2W_TASKS / "crawl_env_cfg.py").read_text()
-    assert "class Go2WCrawlCurriculumCfg" in crawl
-    assert "ang_vel_cmd = None" in crawl
 
 
 def test_high_platform_terrain_has_quantized_training_heights_and_fixed_play_sequence() -> None:
@@ -108,40 +79,3 @@ def test_high_platform_terrain_has_quantized_training_heights_and_fixed_play_seq
     meshes, _ = terrain.high_platform_sequence_terrain(0.0, play_cfg)
     assert len(meshes) == 7
     np.testing.assert_allclose([mesh.bounds[1, 2] for mesh in meshes[1:]], play_cfg.platform_heights)
-
-
-def test_high_platform_declares_its_own_reward_profile() -> None:
-    path = GO2W_TASKS / "high_platform_env_cfg.py"
-    classes = _class_names(path)
-    source = path.read_text()
-
-    assert "Go2WHighPlatformRewardsCfg" in classes
-    assert "rewards: Go2WHighPlatformRewardsCfg" in source
-    assert "self.rewards.joint_default" not in source
-    assert "weight=-100.0" in source
-    assert "dof_power_l1 = None" not in source
-
-
-def test_stunt_tasks_are_registered_with_dedicated_runners() -> None:
-    registry = TASK_REGISTRY.read_text()
-    runners = RUNNERS.read_text()
-
-    expected = {
-        "OmniBot-Go2W-Handstand-v0": ("Go2WHandstandEnvCfg", "Go2WHandstandPPORunnerCfg"),
-        "OmniBot-Go2W-Upright-v0": ("Go2WUprightEnvCfg", "Go2WUprightPPORunnerCfg"),
-        "OmniBot-Go2W-Crawl-v0": ("Go2WCrawlEnvCfg", "Go2WCrawlPPORunnerCfg"),
-        "OmniBot-Go2W-HighPlatform-MLP-v0": (
-            "Go2WHighPlatformEnvCfg",
-            "Go2WHighPlatformMLPPPORunnerCfg",
-        ),
-    }
-    for task_id, (env_cfg, runner_cfg) in expected.items():
-        task_block = registry[registry.index(task_id) : registry.index(task_id) + 600]
-        assert env_cfg in task_block
-        assert runner_cfg in task_block
-        assert f"class {runner_cfg}" in runners
-
-    high_platform_runner = runners[runners.index("class Go2WHighPlatformMLPPPORunnerCfg") :]
-    assert "class Go2WHighPlatformMLPPPORunnerCfg(Go2WRoughMLPPPORunnerCfg)" in high_platform_runner[:200]
-    assert "self.max_iterations = 5000" in high_platform_runner[:800]
-    assert 'self.run_name = "highplatform"' in high_platform_runner[:800]

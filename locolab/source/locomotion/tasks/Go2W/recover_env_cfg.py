@@ -205,7 +205,7 @@ class Go2WRecoverEventsCfg(LocomotionEventCfg):
             "normal_pose_probability": 0.10,
             "normal_pose_range": NORMAL_POSE_RANGE,
             "normal_velocity_range": NORMAL_VELOCITY_RANGE,
-            "normal_joint_position_range": (0.0, 0.0),
+            "normal_joint_position_range": (-0.05, 0.05),
             "normal_joint_velocity_range": (0.0, 0.0),
             "special_poses": RECOVERY_POSES,
             "sample_joint_positions_from_limits": True,
@@ -241,6 +241,8 @@ class Go2WRecoverDreamWaQEnvCfg(Go2WRoughDreamWaQEnvCfg):
         self.scene.terrain.terrain_generator = None
         self.scene.terrain.max_init_terrain_level = None
         self.curriculum.terrain_levels = None
+        # Recovery pose z-ranges are offsets from this baseline and therefore
+        # encode the intended absolute reset heights above each env origin.
         self.scene.robot.init_state.pos = (0.0, 0.0, 0.0)
         self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
         self.scene.height_scanner.mesh_prim_paths = ["/World/ground"]

@@ -8,7 +8,6 @@ All the environments are registered in the `locolab` extension. They start
 with `OmniBot` in their name.
 """
 
-import importlib
 import pathlib
 import pkgutil
 import sys

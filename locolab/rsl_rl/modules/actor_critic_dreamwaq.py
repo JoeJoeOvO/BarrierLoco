@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any, NoReturn
 
 import torch
@@ -10,6 +12,26 @@ from tensordict import TensorDict
 from torch.distributions import Normal
 
 from .dreamwaq_estimator import DreamWaQVAE
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CheckpointMigrationReport:
+    """Describe a compatibility checkpoint load without hiding mismatches."""
+
+    remapped_keys: tuple[tuple[str, str], ...] = ()
+    dropped_keys: tuple[str, ...] = ()
+    missing_keys: tuple[str, ...] = ()
+    unexpected_keys: tuple[str, ...] = ()
+
+    @property
+    def optimizer_compatible(self) -> bool:
+        return not (self.remapped_keys or self.dropped_keys or self.missing_keys or self.unexpected_keys)
+
+    def __bool__(self) -> bool:
+        """Keep the runner's existing optimizer-resume contract."""
+        return self.optimizer_compatible
 
 
 class ActorCriticDreamWaQ(nn.Module):
@@ -42,7 +64,7 @@ class ActorCriticDreamWaQ(nn.Module):
         **kwargs: dict[str, Any],
     ) -> None:
         if kwargs:
-            print(
+            logger.warning(
                 "ActorCriticDreamWaQ.__init__ got unexpected arguments, which will be ignored: "
                 + str([key for key in kwargs])
             )
@@ -82,9 +104,9 @@ class ActorCriticDreamWaQ(nn.Module):
             self.actor = MLP(actor_input_dim, num_actions, actor_hidden_dims, activation)
         self.critic = MLP(num_critic_obs, 1, critic_hidden_dims, activation)
 
-        print(f"DreamWaQ VAE: {self.vae}")
-        print(f"DreamWaQ actor MLP: {self.actor}")
-        print(f"DreamWaQ critic MLP: {self.critic}")
+        logger.info("DreamWaQ VAE: %s", self.vae)
+        logger.info("DreamWaQ actor MLP: %s", self.actor)
+        logger.info("DreamWaQ critic MLP: %s", self.critic)
 
         self.actor_obs_normalization = actor_obs_normalization
         if actor_obs_normalization:
@@ -199,7 +221,7 @@ class ActorCriticDreamWaQ(nn.Module):
         history_obs = self.actor_history_normalizer(self.get_history_obs(obs))
         return self.vae.get_constrained_latent_params(history_obs)
 
-    def load_state_dict(self, state_dict: dict, strict: bool = True) -> bool:
+    def load_state_dict(self, state_dict: dict, strict: bool = True) -> CheckpointMigrationReport:
         state_dict = dict(state_dict)
         remapped_state_dict: dict[str, torch.Tensor] = {}
         legacy_prefixes = {
@@ -212,15 +234,22 @@ class ActorCriticDreamWaQ(nn.Module):
             "vae.latent_var.": "vae.latent_logvar.",
             "vae.vel_var.": "vae.vel_logvar.",
         }
-        remapped_legacy = False
+        remapped_keys: list[tuple[str, str]] = []
         for key, value in state_dict.items():
             new_key = key
             for legacy_prefix, new_prefix in legacy_prefixes.items():
                 if key.startswith(legacy_prefix):
                     new_key = key.replace(legacy_prefix, new_prefix, 1)
-                    remapped_legacy = True
+                    remapped_keys.append((key, new_key))
                     break
             remapped_state_dict[new_key] = value
+
+        if strict:
+            super().load_state_dict(remapped_state_dict, strict=True)
+            report = CheckpointMigrationReport(remapped_keys=tuple(remapped_keys))
+            if remapped_keys:
+                logger.warning("DreamWaQ remapped %d legacy checkpoint keys.", len(remapped_keys))
+            return report
 
         current_state_dict = super().state_dict()
         compatible_state_dict: dict[str, torch.Tensor] = {}
@@ -231,23 +260,22 @@ class ActorCriticDreamWaQ(nn.Module):
             else:
                 dropped_keys.append(key)
 
-        if dropped_keys:
-            print(f"DreamWaQ: Dropping {len(dropped_keys)} incompatible keys: {dropped_keys[:6]}...")
-
         load_result = super().load_state_dict(compatible_state_dict, strict=False)
-        missing_count = len(load_result.missing_keys)
-        unexpected_count = len(load_result.unexpected_keys)
-        if missing_count or unexpected_count:
-            print(
-                "DreamWaQ: checkpoint loaded with missing/unexpected keys "
-                f"(missing={missing_count}, unexpected={unexpected_count})."
+        report = CheckpointMigrationReport(
+            remapped_keys=tuple(remapped_keys),
+            dropped_keys=tuple(dropped_keys),
+            missing_keys=tuple(load_result.missing_keys),
+            unexpected_keys=tuple(load_result.unexpected_keys),
+        )
+        if not report.optimizer_compatible:
+            logger.warning(
+                "DreamWaQ compatibility load: remapped=%d, dropped=%d, missing=%d, unexpected=%d.",
+                len(report.remapped_keys),
+                len(report.dropped_keys),
+                len(report.missing_keys),
+                len(report.unexpected_keys),
             )
-
-        # Treat as cold start only when weights were reshaped or renamed — in those
-        # cases the optimizer state from the checkpoint no longer aligns with the
-        # current parameters. Pure missing/unexpected keys from model evolution
-        # still permit a genuine resume.
-        return not (remapped_legacy or dropped_keys)
+        return report
 
     def _compute_actor_input(self, obs: TensorDict, sample_latent: bool) -> torch.Tensor:
         actor_obs = self.actor_obs_normalizer(self.get_actor_obs(obs))

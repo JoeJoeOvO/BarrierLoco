@@ -7,20 +7,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import TYPE_CHECKING
-
 import isaaclab.utils.math as math_utils
 import torch
-from isaaclab.assets import Articulation
-from isaaclab.envs.mdp import UniformVelocityCommand, UniformVelocityCommandCfg
-from isaaclab.managers import CommandTerm
-from isaaclab.markers import VisualizationMarkers
-
-if TYPE_CHECKING:
-    from isaaclab.envs import ManagerBasedEnv
-
-    from .velocity_command_cfg import UniformVelocityCommandYawFrameCfg
+from isaaclab.envs.mdp import UniformVelocityCommand
 
 
 class UniformVelocityCommandYawFrame(UniformVelocityCommand):

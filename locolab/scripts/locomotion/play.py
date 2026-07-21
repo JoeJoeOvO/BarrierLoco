@@ -10,7 +10,6 @@
 import argparse
 import pathlib
 import sys
-from importlib.metadata import version
 
 from isaaclab.app import AppLauncher
 
@@ -87,7 +86,7 @@ def main():
     agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
 
     # specify directory for logging experiments
-    log_root_path = str(logs_root / "rsl_rl" / agent_cfg.experiment_name)
+    log_root_path = str(logs_root / "rsl_rl" / cli_args.get_output_experiment_name(agent_cfg))
     print(f"[INFO] Loading experiment from directory: {log_root_path}")
     if args_cli.use_pretrained_checkpoint:
         resume_path = get_published_pretrained_checkpoint("rsl_rl", args_cli.task)
@@ -126,11 +125,11 @@ def main():
     print(f"[INFO]: Loading model checkpoint from: {resume_path}")
     # load previously trained model
     if not hasattr(agent_cfg, "class_name") or agent_cfg.class_name == "OnPolicyRunner":
-        runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
+        runner = OnPolicyRunner(env, cli_args.runner_cfg_to_dict(agent_cfg), log_dir=None, device=agent_cfg.device)
     elif agent_cfg.class_name == "DistillationRunner":
         from rsl_rl.runners import DistillationRunner
 
-        runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
+        runner = DistillationRunner(env, cli_args.runner_cfg_to_dict(agent_cfg), log_dir=None, device=agent_cfg.device)
     else:
         raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
     runner.load(resume_path)

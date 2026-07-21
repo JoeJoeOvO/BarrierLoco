@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from isaaclab.utils import configclass
 
-from .rough_env_cfg import WFTRON1RoughEnvCfg, WFTRON1RoughPlayEnvCfg
+from .rough_env_cfg import WFTRON1RoughEnvCfg
 
 
 @configclass

@@ -1,0 +1,2 @@
+recursive-include source/locomotion/assets/Go2W/usd *.usd
+recursive-include source/locomotion/mdp/reference_motions *.json

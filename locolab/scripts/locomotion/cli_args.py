@@ -30,6 +30,12 @@ def add_rsl_rl_args(parser: argparse.ArgumentParser):
     arg_group.add_argument("--resume", action="store_true", default=False, help="Whether to resume from a checkpoint.")
     arg_group.add_argument("--load_run", type=str, default=None, help="Name of the run folder to resume from.")
     arg_group.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file to resume from.")
+    arg_group.add_argument(
+        "--resume_experiment_name",
+        type=str,
+        default=None,
+        help="Experiment folder used only as the checkpoint source when resuming.",
+    )
     # -- logger arguments
     arg_group.add_argument(
         "--logger", type=str, default=None, choices={"wandb", "tensorboard", "neptune"}, help="Logger module to use."
@@ -87,12 +93,18 @@ def update_rsl_rl_cfg(agent_cfg: RslRlOnPolicyRunnerCfg, args_cli: argparse.Name
         if args_cli.seed == -1:
             args_cli.seed = random.randint(0, 10000)
         agent_cfg.seed = args_cli.seed
+    if args_cli.experiment_name is not None:
+        agent_cfg.experiment_name = args_cli.experiment_name
+    if getattr(args_cli, "device", None) is not None:
+        agent_cfg.device = args_cli.device
     if args_cli.resume is not None:
         agent_cfg.resume = args_cli.resume
     if args_cli.load_run is not None:
         agent_cfg.load_run = args_cli.load_run
     if args_cli.checkpoint is not None:
         agent_cfg.load_checkpoint = args_cli.checkpoint
+    if getattr(args_cli, "resume_experiment_name", None) is not None:
+        agent_cfg.resume_experiment_name = args_cli.resume_experiment_name
     if args_cli.run_name is not None:
         agent_cfg.run_name = args_cli.run_name
     if args_cli.logger is not None:
@@ -114,3 +126,22 @@ def update_rsl_rl_cfg(agent_cfg: RslRlOnPolicyRunnerCfg, args_cli: argparse.Name
         agent_cfg.wandb_group = agent_cfg.experiment_name
 
     return agent_cfg
+
+
+def get_output_experiment_name(agent_cfg: RslRlOnPolicyRunnerCfg) -> str:
+    """Return the log tree that receives the new run."""
+    return agent_cfg.experiment_name
+
+
+def get_resume_experiment_name(agent_cfg: RslRlOnPolicyRunnerCfg) -> str:
+    """Return the checkpoint source without changing the output log tree."""
+    return getattr(agent_cfg, "resume_experiment_name", None) or get_output_experiment_name(agent_cfg)
+
+
+def runner_cfg_to_dict(agent_cfg: RslRlOnPolicyRunnerCfg, *, validate_finite: bool = False) -> dict:
+    """Remove launcher-only fields before constructing the RSL-RL runner."""
+    config = agent_cfg.to_dict()
+    config.pop("resume_experiment_name", None)
+    if validate_finite:
+        config["validate_finite"] = True
+    return config

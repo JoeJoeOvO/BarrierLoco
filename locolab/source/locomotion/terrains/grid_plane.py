@@ -21,22 +21,19 @@ class GridPlaneTerrainImporter(TerrainImporter):
     """
 
     def __init__(self, cfg: TerrainImporterCfg):
-        cfg.validate()
-        if cfg.num_envs is None or cfg.num_envs < 1:
+        if sim_utils.SimulationContext.instance() is None:
+            raise RuntimeError("GridPlaneTerrainImporter requires an active SimulationContext.")
+        super().__init__(cfg)
+
+    def import_ground_plane(self, name: str, size: tuple[float, float] = (2.0e6, 2.0e6)):
+        """Import the plane as a local mesh while preserving the parent lifecycle."""
+        del size
+        if self.cfg.num_envs is None or self.cfg.num_envs < 1:
             raise ValueError("Grid plane requires at least one environment.")
-        if cfg.env_spacing is None or cfg.env_spacing <= 0.0:
+        if self.cfg.env_spacing is None or self.cfg.env_spacing <= 0.0:
             raise ValueError("Grid plane requires a positive environment spacing.")
 
-        self.cfg = cfg
-        self.device = sim_utils.SimulationContext.instance().device  # type: ignore[union-attr]
-        self.terrain_prim_paths = []
-        self.terrain_origins = None
-        self.env_origins = None
-        self._terrain_flat_patches = {}
-
-        num_rows = math.ceil(cfg.num_envs / int(math.sqrt(cfg.num_envs)))
-        num_cols = math.ceil(cfg.num_envs / num_rows)
-        size = (num_rows * cfg.env_spacing, num_cols * cfg.env_spacing)
-        self.import_mesh("terrain", make_plane(size, height=0.0))
-        self.configure_env_origins()
-        self.set_debug_vis(cfg.debug_vis)
+        num_rows = math.ceil(self.cfg.num_envs / int(math.sqrt(self.cfg.num_envs)))
+        num_cols = math.ceil(self.cfg.num_envs / num_rows)
+        mesh_size = (num_rows * self.cfg.env_spacing, num_cols * self.cfg.env_spacing)
+        self.import_mesh(name, make_plane(mesh_size, height=0.0))

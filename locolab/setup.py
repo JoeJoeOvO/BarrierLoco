@@ -9,7 +9,24 @@ INSTALL_REQUIRES = [
     "onnxruntime",
 ]
 
-all_packages = ["locolab"] + find_packages(where=".")
+# ``setup.py`` lives inside the ``locolab`` package directory.  Keep the
+# vendored RL library importable as ``rsl_rl`` while installing the training
+# stack under its canonical ``locolab.source`` namespace.
+discovered_packages = find_packages(where=".")
+all_packages = ["locolab"]
+all_packages.extend(
+    f"locolab.{package}" if package == "source" or package.startswith("source.") else package
+    for package in discovered_packages
+)
+
+PACKAGE_DATA = {
+    "locolab.source.locomotion.assets": [
+        "Go2W/usd/*.usd",
+        "Go2W/usd/configuration/*.usd",
+    ],
+    "locolab.source.locomotion.mdp": ["reference_motions/*.json"],
+}
+
 setup(
     name="locolab",
     packages=all_packages,
@@ -22,6 +39,7 @@ setup(
     install_requires=INSTALL_REQUIRES,
     license="MIT",
     include_package_data=True,
+    package_data=PACKAGE_DATA,
     python_requires=">=3.10",
     classifiers=[
         "Natural Language :: English",

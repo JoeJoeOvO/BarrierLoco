@@ -211,7 +211,7 @@ class ActorCriticRecurrent(nn.Module):
             critic_obs = self.get_critic_obs(obs)
             self.critic_obs_normalizer.update(critic_obs)
 
-    def load_state_dict(self, state_dict: dict, strict: bool = False) -> bool:
+    def load_state_dict(self, state_dict: dict, strict: bool = True) -> bool:
         """Load the parameters of the actor-critic model.
 
         Args:

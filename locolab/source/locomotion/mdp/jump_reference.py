@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import math
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
@@ -11,13 +13,88 @@ import torch
 
 REFERENCE_MOTION_DIR = Path(__file__).with_name("reference_motions")
 DEFAULT_JUMP_REFERENCE_PATH = REFERENCE_MOTION_DIR / "go2w_jump_20cm_fast_full_dynamics_to.json"
+GO2W_REFERENCE_LEG_JOINTS = (
+    "FR_hip_joint",
+    "FR_thigh_joint",
+    "FR_calf_joint",
+    "FL_hip_joint",
+    "FL_thigh_joint",
+    "FL_calf_joint",
+    "RR_hip_joint",
+    "RR_thigh_joint",
+    "RR_calf_joint",
+    "RL_hip_joint",
+    "RL_thigh_joint",
+    "RL_calf_joint",
+)
 __all__ = [
     "DEFAULT_JUMP_REFERENCE_PATH",
+    "GO2W_JUMP_PROFILE",
+    "GO2W_REFERENCE_LEG_JOINTS",
+    "JumpProfile",
     "JumpReferenceSample",
     "JumpReferenceTrajectory",
     "load_jump_reference",
     "resolve_reference_path",
 ]
+
+
+@dataclass(frozen=True)
+class JumpProfile:
+    """Single source of truth for a timed jump and its reference contract."""
+
+    reference_path: Path
+    takeoff_time: float
+    apex_time: float
+    landing_time: float
+    sequence_duration: float
+    minimum_height: float
+    jump_probability: float
+    leg_joint_names: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        schedule = (self.takeoff_time, self.apex_time, self.landing_time, self.sequence_duration)
+        if not 0.0 < schedule[0] < schedule[1] < schedule[2] < schedule[3]:
+            raise ValueError(f"Jump profile schedule is not strictly increasing: {schedule}.")
+        if self.minimum_height <= 0.0:
+            raise ValueError("minimum_height must be positive.")
+        if not 0.0 <= self.jump_probability <= 1.0:
+            raise ValueError("jump_probability must be in [0, 1].")
+        if not self.leg_joint_names:
+            raise ValueError("leg_joint_names must not be empty.")
+
+    def validate_reference_metadata(self, metadata: dict) -> None:
+        expected_times = {
+            "target_takeoff_time": self.takeoff_time,
+            "target_apex_time": self.apex_time,
+            "target_landing_time": self.landing_time,
+            "sequence_duration": self.sequence_duration,
+        }
+        for key, expected in expected_times.items():
+            actual = metadata.get(key)
+            if actual is None or not math.isclose(float(actual), expected, rel_tol=0.0, abs_tol=1.0e-9):
+                raise ValueError(f"Jump-reference metadata {key!r} is {actual!r}; expected {expected}.")
+        reference_height = metadata.get("target_jump_height")
+        if reference_height is None or float(reference_height) < self.minimum_height:
+            raise ValueError(
+                "Jump-reference target height must be at least the profile minimum "
+                f"({reference_height!r} < {self.minimum_height})."
+            )
+        joint_names = tuple(metadata.get("leg_joint_names", ()))
+        if joint_names != self.leg_joint_names:
+            raise ValueError(f"Jump-reference leg_joint_names are {joint_names!r}; expected {self.leg_joint_names!r}.")
+
+
+GO2W_JUMP_PROFILE = JumpProfile(
+    reference_path=DEFAULT_JUMP_REFERENCE_PATH,
+    takeoff_time=0.36,
+    apex_time=0.54,
+    landing_time=0.72,
+    sequence_duration=0.80,
+    minimum_height=0.18,
+    jump_probability=0.8,
+    leg_joint_names=GO2W_REFERENCE_LEG_JOINTS,
+)
 
 
 class JumpReferenceSample(NamedTuple):
@@ -34,7 +111,13 @@ class JumpReferenceSample(NamedTuple):
 class JumpReferenceTrajectory:
     """Validated tensor representation of one offline TO trajectory."""
 
-    def __init__(self, payload: dict, device: str | torch.device = "cpu", dtype: torch.dtype = torch.float32):
+    def __init__(
+        self,
+        payload: dict,
+        device: str | torch.device = "cpu",
+        dtype: torch.dtype = torch.float32,
+        profile: JumpProfile | None = None,
+    ):
         self.metadata = dict(payload.get("metadata", {}))
         self.time = torch.as_tensor(payload["time"], device=device, dtype=dtype)
         self.base_position = torch.as_tensor(payload["base_position"], device=device, dtype=dtype)
@@ -44,6 +127,8 @@ class JumpReferenceTrajectory:
         self.joint_position = torch.as_tensor(payload["joint_position"], device=device, dtype=dtype)
         self.joint_velocity = torch.as_tensor(payload["joint_velocity"], device=device, dtype=dtype)
         self._validate()
+        if profile is not None:
+            profile.validate_reference_metadata(self.metadata)
 
     @classmethod
     def from_json(
@@ -51,11 +136,12 @@ class JumpReferenceTrajectory:
         path: str | Path,
         device: str | torch.device = "cpu",
         dtype: torch.dtype = torch.float32,
+        profile: JumpProfile | None = None,
     ) -> JumpReferenceTrajectory:
         path = resolve_reference_path(path)
         with path.open(encoding="utf-8") as stream:
             payload = json.load(stream)
-        return cls(payload, device=device, dtype=dtype)
+        return cls(payload, device=device, dtype=dtype, profile=profile)
 
     @property
     def duration(self) -> float:
@@ -132,7 +218,8 @@ def load_jump_reference(
     path: str | Path = DEFAULT_JUMP_REFERENCE_PATH,
     device: str | torch.device = "cpu",
     dtype: torch.dtype = torch.float32,
+    profile: JumpProfile = GO2W_JUMP_PROFILE,
 ) -> JumpReferenceTrajectory:
     """Load and cache a trajectory once for each training device and dtype."""
     resolved = resolve_reference_path(path)
-    return JumpReferenceTrajectory.from_json(resolved, device=device, dtype=dtype)
+    return JumpReferenceTrajectory.from_json(resolved, device=device, dtype=dtype, profile=profile)

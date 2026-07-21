@@ -86,6 +86,8 @@ class RslRlOnPolicyRunnerCfg:
     wandb_entity: str | None = None
     wandb_group: str | None = None
     resume: bool = False
+    # ``experiment_name`` is always the output tree; this optional field is input-only.
+    resume_experiment_name: str | None = None
     load_run: str = ".*"
     load_checkpoint: str = "model_.*.pt"
     policy: RslRlPpoActorCriticCfg = MISSING
@@ -178,13 +180,18 @@ class Go2WJumpMLPPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         self.max_iterations = 5000
-        # Preserve the validated checkpoint tree while exposing one canonical Jump task.
-        self.experiment_name = "omnibot_go2w_jump_olympus_mlp_v0"
+        self.experiment_name = "omnibot_go2w_jump_mlp_v0"
+        self.resume_experiment_name = "omnibot_go2w_jump_flat_pretrain_mlp_v0"
 
 
 @configclass
 class Go2WJumpFlatPretrainMLPPPORunnerCfg(Go2WJumpMLPPPORunnerCfg):
-    """Store observation-compatible Flat checkpoints in the Jump resume tree."""
+    """Produce observation-compatible Flat checkpoints for Jump warm-starting."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.experiment_name = "omnibot_go2w_jump_flat_pretrain_mlp_v0"
+        self.resume_experiment_name = None
 
 
 @configclass
@@ -217,12 +224,13 @@ class Go2WRoughMLPPPORunnerCfg(BasePPORunnerCfg):
 
 @configclass
 class Go2WHighPlatformMLPPPORunnerCfg(Go2WRoughMLPPPORunnerCfg):
-    """Rough MLP runner kept in the same log tree for direct checkpoint resume."""
+    """Write platform runs separately while allowing Rough warm-starting."""
 
     def __post_init__(self) -> None:
         super().__post_init__()
         self.max_iterations = 5000
-        self.run_name = "highplatform"
+        self.experiment_name = "omnibot_go2w_highplatform_mlp_v0"
+        self.resume_experiment_name = "omnibot_go2w_rough_mlp_v0"
 
 
 @configclass

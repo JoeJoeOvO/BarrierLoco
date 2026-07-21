@@ -19,21 +19,9 @@ from locolab.source.locomotion.terrains.grid_plane import GridPlaneTerrainImport
 
 from .flat_env_cfg import Go2WCurriculumCfg, Go2WFlatEnvCfg, Go2WObservationsCfg, Go2WRewardsCfg, Go2WSceneCfg
 
-JUMP_REFERENCE_PATH = str(mdp.DEFAULT_JUMP_REFERENCE_PATH)
-GO2W_REFERENCE_LEG_JOINTS = [
-    "FR_hip_joint",
-    "FR_thigh_joint",
-    "FR_calf_joint",
-    "FL_hip_joint",
-    "FL_thigh_joint",
-    "FL_calf_joint",
-    "RR_hip_joint",
-    "RR_thigh_joint",
-    "RR_calf_joint",
-    "RL_hip_joint",
-    "RL_thigh_joint",
-    "RL_calf_joint",
-]
+JUMP_PROFILE = mdp.GO2W_JUMP_PROFILE
+JUMP_REFERENCE_PATH = str(JUMP_PROFILE.reference_path)
+GO2W_REFERENCE_LEG_JOINTS = list(JUMP_PROFILE.leg_joint_names)
 
 
 @configclass
@@ -72,15 +60,15 @@ class Go2WJumpCommandsCfg(LocomotionCommandsCfg):
         # The reset event samples one trigger per episode.  Keep the command
         # horizon beyond the episode so it cannot resample halfway through.
         resampling_time_range=(1000.0, 1000.0),
-        jump_probability=0.8,
+        jump_probability=JUMP_PROFILE.jump_probability,
         contact_force_threshold=1.0,
-        minimum_jump_height=0.18,
+        minimum_jump_height=JUMP_PROFILE.minimum_height,
         landing_velocity_threshold=0.2,
         landing_recovery_time=0.06,
-        takeoff_time=0.36,
-        apex_time=0.54,
-        landing_time=0.72,
-        sequence_duration=0.80,
+        takeoff_time=JUMP_PROFILE.takeoff_time,
+        apex_time=JUMP_PROFILE.apex_time,
+        landing_time=JUMP_PROFILE.landing_time,
+        sequence_duration=JUMP_PROFILE.sequence_duration,
         debug_vis=False,
     )
 
@@ -130,7 +118,7 @@ class Go2WJumpEventsCfg(LocomotionEventCfg):
         func=mdp.reset_timed_jump_or_flat_state,
         mode="reset",
         params={
-            "jump_probability": 0.8,
+            "jump_probability": JUMP_PROFILE.jump_probability,
             "reference_path": JUMP_REFERENCE_PATH,
             "leg_joint_names": GO2W_REFERENCE_LEG_JOINTS,
             # These are the original flat-task reset ranges.
@@ -145,7 +133,7 @@ class Go2WJumpEventsCfg(LocomotionEventCfg):
             },
             "joint_position_range": (0.8, 1.2),
             "joint_velocity_range": (-1.0, 1.0),
-            "phase_time_range": (0.0, 0.80),
+            "phase_time_range": (0.0, JUMP_PROFILE.sequence_duration),
         },
     )
     # The combined event writes root and joint state exactly once.
@@ -219,7 +207,7 @@ class Go2WJumpRewardsCfg(Go2WRewardsCfg):
         params={
             "command_name": "jump_command",
             "reference_path": JUMP_REFERENCE_PATH,
-            "takeoff_time": 0.36,
+            "takeoff_time": JUMP_PROFILE.takeoff_time,
             "std": math.radians(15.0),
             "asset_cfg": SceneEntityCfg("robot", joint_names=GO2W_REFERENCE_LEG_JOINTS, preserve_order=True),
         },
@@ -230,7 +218,7 @@ class Go2WJumpRewardsCfg(Go2WRewardsCfg):
         params={
             "command_name": "jump_command",
             "reference_path": JUMP_REFERENCE_PATH,
-            "takeoff_time": 0.36,
+            "takeoff_time": JUMP_PROFILE.takeoff_time,
             "std": 3.0,
             "asset_cfg": SceneEntityCfg("robot", joint_names=GO2W_REFERENCE_LEG_JOINTS, preserve_order=True),
         },
@@ -241,7 +229,7 @@ class Go2WJumpRewardsCfg(Go2WRewardsCfg):
         weight=100.0,
         params={
             "command_name": "jump_command",
-            "ascent_end_time": 0.54,
+            "ascent_end_time": JUMP_PROFILE.apex_time,
             "require_all_wheels_airborne": True,
         },
     )
@@ -251,7 +239,7 @@ class Go2WJumpRewardsCfg(Go2WRewardsCfg):
         params={
             "command_name": "jump_command",
             "reference_path": JUMP_REFERENCE_PATH,
-            "ascent_end_time": 0.54,
+            "ascent_end_time": JUMP_PROFILE.apex_time,
             "require_all_wheels_airborne": True,
         },
     )
@@ -261,7 +249,7 @@ class Go2WJumpRewardsCfg(Go2WRewardsCfg):
         params={
             "command_name": "jump_command",
             "reference_path": JUMP_REFERENCE_PATH,
-            "ascent_end_time": 0.54,
+            "ascent_end_time": JUMP_PROFILE.apex_time,
             "std": 0.05,
             "require_all_wheels_airborne": True,
         },

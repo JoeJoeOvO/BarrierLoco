@@ -7,7 +7,6 @@ Automatically detects input format and converts to the other format
 import os
 import sys
 
-import numpy as np
 import torch
 
 

@@ -254,29 +254,49 @@ class wheel_resistance_xy(ManagerTermBase):
     ):
         asset: RigidObject | Articulation = env.scene[asset_cfg.name]
 
-        random_values = torch.rand(env.num_envs, device=env.device)
-        env_ids = (random_values < resample_probability).nonzero(as_tuple=True)[0]
+        if env_ids is None:
+            env_ids = torch.arange(env.num_envs, device=self.device)
+        else:
+            env_ids = env_ids.to(device=self.device, dtype=torch.long)
+        if env_ids.numel() == 0:
+            return
 
-        self.linear_resistance[env_ids] = (
-            torch.rand(len(env_ids), device=self.device) * (linear_res_coef_range[1] - linear_res_coef_range[0])
-            + linear_res_coef_range[0]
-        ).clip(min=0.0)
-        self.quadratic_resistance[env_ids] = (
-            torch.rand(len(env_ids), device=self.device) * (quadratic_res_coef_range[1] - quadratic_res_coef_range[0])
-            + quadratic_res_coef_range[0]
-        ).clip(min=0.0)
+        resample_mask = torch.rand(env_ids.numel(), device=self.device) < resample_probability
+        resample_ids = env_ids[resample_mask]
+        if resample_ids.numel() > 0:
+            self.linear_resistance[resample_ids] = (
+                torch.rand(resample_ids.numel(), device=self.device)
+                * (linear_res_coef_range[1] - linear_res_coef_range[0])
+                + linear_res_coef_range[0]
+            ).clip(min=0.0)
+            self.quadratic_resistance[resample_ids] = (
+                torch.rand(resample_ids.numel(), device=self.device)
+                * (quadratic_res_coef_range[1] - quadratic_res_coef_range[0])
+                + quadratic_res_coef_range[0]
+            ).clip(min=0.0)
 
-        wheel_vel_w = asset.data.body_lin_vel_w[:, asset_cfg.body_ids]
-        linear_force = wheel_vel_w * self.linear_resistance[:, None, None]
-        quadratic_force = wheel_vel_w.square() * wheel_vel_w.sign() * self.quadratic_resistance[:, None, None]
+        wheel_vel_w = asset.data.body_lin_vel_w[env_ids][:, asset_cfg.body_ids]
+        linear_force = wheel_vel_w * self.linear_resistance[env_ids, None, None]
+        quadratic_force = wheel_vel_w.square() * wheel_vel_w.sign() * self.quadratic_resistance[env_ids, None, None]
         wheel_force_w = -(linear_force + quadratic_force)
         wheel_force_w[..., 2] = 0.0
-        wheel_force_b = math_utils.quat_apply_inverse(asset.data.body_quat_w[:, asset_cfg.body_ids], wheel_force_w)
+        wheel_force_b = math_utils.quat_apply_inverse(
+            asset.data.body_quat_w[env_ids][:, asset_cfg.body_ids], wheel_force_w
+        )
 
         contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-        contact_history = contact_sensor.data.net_forces_w_history
+        contact_history = contact_sensor.data.net_forces_w_history[env_ids]
         contact_mask = contact_history[:, :, sensor_cfg.body_ids, 2].clip(min=0.0, max=1.0).mean(dim=1)
         wheel_force_b *= contact_mask.unsqueeze(-1)
 
+        asset.set_external_force_and_torque(
+            wheel_force_b,
+            torch.zeros_like(wheel_force_b),
+            env_ids=env_ids,
+            body_ids=asset_cfg.body_ids,
+        )
+        # Isaac Lab derives this articulation-wide flag only from the wrench
+        # supplied by the latest setter call.  A zero wheel wrench must not
+        # disable forces cached by another event (for example the base reset
+        # perturbation used by HighPlatform).
         asset.has_external_wrench = True
-        asset._external_force_b[:, asset_cfg.body_ids] = wheel_force_b

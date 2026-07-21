@@ -73,6 +73,9 @@ class BinaryJumpCommand(CommandTerm):
         self.apex_reached = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self.all_wheels_airborne_achieved = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self.stable_landing_achieved = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self.history_prior_airborne = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self.history_prior_apex = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self.history_prior_landed = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self.trigger_position = self.robot.data.root_pos_w.clone()
         self.trigger_height = self.robot.data.root_pos_w[:, 2].clone()
         self.target_jump_height = torch.full((self.num_envs,), float(self.cfg.minimum_jump_height), device=self.device)
@@ -294,6 +297,9 @@ class BinaryJumpCommand(CommandTerm):
         self.apex_reached[env_ids] = False
         self.all_wheels_airborne_achieved[env_ids] = False
         self.stable_landing_achieved[env_ids] = False
+        self.history_prior_airborne[env_ids] = False
+        self.history_prior_apex[env_ids] = False
+        self.history_prior_landed[env_ids] = False
         self.trigger_position[env_ids] = position
         self.trigger_height[env_ids] = height
         self.target_jump_height[env_ids] = float(self.cfg.minimum_jump_height)
@@ -328,29 +334,14 @@ class BinaryJumpCommand(CommandTerm):
             self.target_jump_height[env_ids] = target_height
         self.max_height[env_ids] = torch.maximum(self.max_height[env_ids], self.robot.data.root_pos_w[env_ids, 2])
 
-        # A phase-randomized reset must restore the history implied by that
-        # point on the fixed schedule.  Otherwise landing/recovery samples can
-        # never satisfy completion because their earlier flight was not
-        # observed by this freshly reset command term.
+        # A phase-randomized reset records schedule history as a training prior.
+        # It must not pre-populate observed outcomes used by success metrics.
         after_takeoff = time >= self.cfg.takeoff_time
         after_apex = time >= self.cfg.apex_time
         landed = time >= self.cfg.landing_time
-        self.all_wheels_airborne_achieved[env_ids] = after_takeoff
-        apex_ids = env_ids[after_apex]
-        if apex_ids.numel() > 0:
-            scheduled_apex = self.trigger_height[apex_ids] + self.target_jump_height[apex_ids]
-            self.max_height[apex_ids] = torch.maximum(self.max_height[apex_ids], scheduled_apex)
-        landed_ids = env_ids[landed]
-        if landed_ids.numel() > 0:
-            elapsed_recovery = time[landed] - self.cfg.landing_time
-            self.recovery_time[landed_ids] = torch.clamp(
-                elapsed_recovery,
-                min=0.0,
-                max=self.cfg.landing_recovery_time,
-            )
-            self.stable_landing_achieved[landed_ids] = self.recovery_time[landed_ids] >= self.cfg.landing_recovery_time
-            self.touchdown_velocity[landed_ids] = torch.abs(self.robot.data.root_lin_vel_w[landed_ids, 2])
-        self.apex_reached[env_ids] = time >= self.cfg.apex_time
+        self.history_prior_airborne[env_ids] = after_takeoff
+        self.history_prior_apex[env_ids] = after_apex
+        self.history_prior_landed[env_ids] = landed
         self._set_phase_from_time(env_ids)
 
     def _set_phase_from_time(self, env_ids: torch.Tensor) -> None:

@@ -5,6 +5,7 @@
 
 """Helper functions."""
 
+from .finite import assert_finite_tree
 from .utils import (
     get_param,
     resolve_callable,
@@ -16,6 +17,7 @@ from .utils import (
 )
 
 __all__ = [
+    "assert_finite_tree",
     "get_param",
     "resolve_callable",
     "resolve_nn_activation",

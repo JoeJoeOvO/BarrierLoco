@@ -1,0 +1,140 @@
+name: Isaac smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      device:
+        description: Isaac/Torch device passed to the smoke commands
+        required: false
+        default: cuda:0
+        type: string
+      num_envs:
+        description: Number of parallel environments used by each smoke command
+        required: false
+        default: 8
+        type: number
+
+concurrency:
+  group: isaac-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  isaac-smoke:
+    name: isaac-smoke
+    # The runner must carry these labels and provide a pre-installed Isaac Lab
+    # environment. Configure repository variable ISAACLAB_PYTHON when its
+    # interpreter is not at the project default below.
+    runs-on: [self-hosted, linux, x64, gpu, isaaclab]
+    timeout-minutes: 90
+    env:
+      MIN_ACTIONS_RUNNER_VERSION: 2.327.1
+      ISAACLAB_PYTHON: ${{ vars.ISAACLAB_PYTHON || '/home/sshang/miniconda3/envs/env_isaaclab/bin/python' }}
+      SMOKE_DEVICE: ${{ inputs.device || 'cuda:0' }}
+      SMOKE_NUM_ENVS: ${{ inputs.num_envs || '8' }}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/locolab
+    steps:
+      - name: Verify self-hosted runner version
+        shell: bash
+        run: |
+          set -euo pipefail
+          runner_version="${ACTIONS_RUNNER_VERSION:-}"
+          if [[ -z "${runner_version}" ]]; then
+            search_root="${RUNNER_TEMP:?RUNNER_TEMP is required}"
+            while [[ "${search_root}" != "/" ]]; do
+              listener="${search_root}/bin/Runner.Listener"
+              if [[ -x "${listener}" ]]; then
+                runner_version="$("${listener}" --version | tail -n 1)"
+                break
+              fi
+              search_root="$(dirname "${search_root}")"
+            done
+          fi
+          if [[ -z "${runner_version}" ]]; then
+            echo "::error::Cannot determine the Actions runner version. Set ACTIONS_RUNNER_VERSION on the runner."
+            exit 1
+          fi
+          runner_version="${runner_version#v}"
+          oldest_version="$(printf '%s\n%s\n' "${MIN_ACTIONS_RUNNER_VERSION}" "${runner_version}" | sort -V | sed -n '1p')"
+          if [[ "${oldest_version}" != "${MIN_ACTIONS_RUNNER_VERSION}" ]]; then
+            echo "::error::Actions runner ${runner_version} is older than required ${MIN_ACTIONS_RUNNER_VERSION}."
+            exit 1
+          fi
+          printf 'Actions runner %s satisfies minimum %s.\n' "${runner_version}" "${MIN_ACTIONS_RUNNER_VERSION}"
+
+      # checkout@v6 uses the Node 24 action runtime and therefore requires the
+      # runner version checked above.
+      - uses: actions/checkout@v6
+
+      - name: Verify Isaac Lab GPU environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "${ISAACLAB_PYTHON}"
+          test -f locolab/scripts/locomotion/smoke_env.py
+          nvidia-smi --query-gpu=name --format=csv,noheader
+          "${ISAACLAB_PYTHON}" -c "import isaaclab, torch; assert torch.cuda.is_available(), 'CUDA is unavailable'"
+
+      - name: Validate registered Go2W config objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd locolab
+          config_log="${RUNNER_TEMP}/go2w-configs.log"
+          "${ISAACLAB_PYTHON}" scripts/locomotion/smoke_env.py \
+            --validate-registered-go2w \
+            --device "${SMOKE_DEVICE}" \
+            --headless 2>&1 | tee "${config_log}"
+          grep -F "CONFIG_SMOKE_OK prefix=OmniBot-Go2W- tasks=" "${config_log}"
+
+      - name: Run 32-step task rollouts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd locolab
+          tasks=(
+            OmniBot-Go2W-Jump-MLP-v0
+            OmniBot-Go2W-HighPlatform-MLP-v0
+            OmniBot-Go2W-Recover-DreamWaQ-v0
+          )
+          for task in "${tasks[@]}"; do
+            smoke_log="${RUNNER_TEMP}/rollout-${task}.log"
+            "${ISAACLAB_PYTHON}" scripts/locomotion/smoke_env.py \
+              --task "${task}" \
+              --num_envs "${SMOKE_NUM_ENVS}" \
+              --steps 32 \
+              --device "${SMOKE_DEVICE}" \
+              --headless 2>&1 | tee "${smoke_log}"
+            grep -F "ISAAC_SMOKE_OK task=${task} envs=${SMOKE_NUM_ENVS} steps=32" "${smoke_log}"
+          done
+
+      - name: Run two-iteration network training smokes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd locolab
+          tasks=(
+            OmniBot-Go2W-Rough-MLP-v0
+            OmniBot-Go2W-Rough-Rnn-v0
+            OmniBot-Go2W-Rough-DreamWaQ-v0
+          )
+          for task in "${tasks[@]}"; do
+            smoke_log="${RUNNER_TEMP}/training-${task}.log"
+            "${ISAACLAB_PYTHON}" scripts/locomotion/train.py \
+              --task "${task}" \
+              --num_envs "${SMOKE_NUM_ENVS}" \
+              --max_iterations 2 \
+              --seed 42 \
+              --logger tensorboard \
+              --smoke-marker \
+              --device "${SMOKE_DEVICE}" \
+              --headless 2>&1 | tee "${smoke_log}"
+            grep -F "TRAINING_SMOKE_OK task=${task} iterations=2" "${smoke_log}"
+          done

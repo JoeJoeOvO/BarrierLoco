@@ -5,6 +5,7 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
 import torch
 import torch.nn as nn
 
@@ -45,6 +46,14 @@ class _IdentityNormalization(nn.Module):
         del value
 
 
+class _TinyMemory(nn.Module):
+    def __init__(self, input_dim: int, hidden_dim: int, num_layers: int, rnn_type: str) -> None:
+        super().__init__()
+        assert rnn_type == "gru"
+        self.rnn = nn.GRU(input_dim, hidden_dim, num_layers)
+        self.hidden_state = None
+
+
 def _load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
@@ -73,6 +82,23 @@ def _load_dreamwaq_modules(monkeypatch):
     estimator = _load_module("rsl_rl.modules.dreamwaq_estimator", MODULES_DIR / "dreamwaq_estimator.py")
     actor_critic = _load_module("rsl_rl.modules.actor_critic_dreamwaq", MODULES_DIR / "actor_critic_dreamwaq.py")
     return estimator, actor_critic
+
+
+def _load_recurrent_module(monkeypatch):
+    rsl_rl_package = types.ModuleType("rsl_rl")
+    rsl_rl_package.__path__ = []
+    networks_module = types.ModuleType("rsl_rl.networks")
+    networks_module.MLP = _TinyMLP
+    networks_module.EmpiricalNormalization = _IdentityNormalization
+    networks_module.HiddenState = object
+    networks_module.Memory = _TinyMemory
+    tensordict_module = types.ModuleType("tensordict")
+    tensordict_module.TensorDict = dict
+
+    monkeypatch.setitem(sys.modules, "rsl_rl", rsl_rl_package)
+    monkeypatch.setitem(sys.modules, "rsl_rl.networks", networks_module)
+    monkeypatch.setitem(sys.modules, "tensordict", tensordict_module)
+    return _load_module("rsl_rl.actor_critic_recurrent_under_test", MODULES_DIR / "actor_critic_recurrent.py")
 
 
 def test_dreamwaq_policy_mean_is_deterministic_during_training(monkeypatch) -> None:
@@ -129,3 +155,57 @@ def test_dreamwaq_reconstruction_mask_excludes_dimensions_from_loss(monkeypatch)
     )
 
     torch.testing.assert_close(losses["recons_loss"], torch.full((2,), 5.0))
+
+
+def test_dreamwaq_strict_checkpoint_load_rejects_incompatible_shapes(monkeypatch) -> None:
+    _, actor_critic = _load_dreamwaq_modules(monkeypatch)
+    observations = {
+        "policy": torch.zeros(1, 5),
+        "policy_history": torch.zeros(1, 20),
+        "critic": torch.zeros(1, 8),
+        "dreamwaq_velocity": torch.zeros(1, 3),
+    }
+    policy = actor_critic.ActorCriticDreamWaQ(
+        obs=observations,
+        obs_groups={"policy": ["policy"], "policy_history": ["policy_history"], "critic": ["critic"]},
+        num_actions=4,
+        actor_hidden_dims=[8],
+        critic_hidden_dims=[8],
+        estimator_hidden_dims=[8],
+        context_decoder_hidden_dims=[8],
+        context_latent_dim=4,
+    )
+    checkpoint = policy.state_dict()
+    checkpoint["actor.0.weight"] = checkpoint["actor.0.weight"][:, :-1]
+
+    with pytest.raises(RuntimeError, match="size mismatch"):
+        policy.load_state_dict(checkpoint, strict=True)
+
+    report = policy.load_state_dict(checkpoint, strict=False)
+    assert report.dropped_keys == ("actor.0.weight",)
+    assert "actor.0.weight" in report.missing_keys
+    assert not report.optimizer_compatible
+    assert not report
+
+    exact_report = policy.load_state_dict(policy.state_dict(), strict=True)
+    assert exact_report.optimizer_compatible
+    assert exact_report
+
+
+def test_recurrent_checkpoint_load_is_strict_by_default(monkeypatch) -> None:
+    recurrent = _load_recurrent_module(monkeypatch)
+    observations = {"policy": torch.zeros(1, 5), "critic": torch.zeros(1, 8)}
+    policy = recurrent.ActorCriticRecurrent(
+        obs=observations,
+        obs_groups={"policy": ["policy"], "critic": ["critic"]},
+        num_actions=4,
+        actor_hidden_dims=[8],
+        critic_hidden_dims=[8],
+        rnn_type="gru",
+        rnn_hidden_dim=8,
+    )
+    checkpoint = policy.state_dict()
+    checkpoint.pop(next(iter(checkpoint)))
+
+    with pytest.raises(RuntimeError, match="Missing key"):
+        policy.load_state_dict(checkpoint)

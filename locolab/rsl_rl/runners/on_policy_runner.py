@@ -21,7 +21,7 @@ from rsl_rl.modules import (
     resolve_symmetry_config,
 )
 from rsl_rl.storage import RolloutStorage
-from rsl_rl.utils import resolve_callable, resolve_obs_groups
+from rsl_rl.utils import assert_finite_tree, resolve_callable, resolve_obs_groups
 from rsl_rl.utils.logger import Logger
 from tensordict import TensorDict
 
@@ -33,6 +33,7 @@ class OnPolicyRunner:
         self.cfg = train_cfg
         self.policy_cfg = train_cfg["policy"]
         self.alg_cfg = train_cfg["algorithm"]
+        self.validate_finite = bool(train_cfg.get("validate_finite", False))
         self.device = device
         self.env = env
 
@@ -69,6 +70,8 @@ class OnPolicyRunner:
 
         # Start learning
         obs = self.env.get_observations().to(self.device)
+        if self.validate_finite:
+            assert_finite_tree(obs, "initial_observations")
         self.train_mode()  # switch to train mode (for dropout for example)
 
         # Ensure all parameters are in-synced
@@ -86,10 +89,15 @@ class OnPolicyRunner:
                 for _ in range(self.cfg["num_steps_per_env"]):
                     # Sample actions
                     actions = self.alg.act(obs)
+                    if self.validate_finite:
+                        assert_finite_tree(actions, "rollout.actions")
                     # Step the environment
                     obs, rewards, dones, extras = self.env.step(actions.to(self.env.device))
                     # Move to device
                     obs, rewards, dones = (obs.to(self.device), rewards.to(self.device), dones.to(self.device))
+                    if self.validate_finite:
+                        assert_finite_tree(obs, "rollout.observations")
+                        assert_finite_tree(rewards, "rollout.rewards")
                     # Process the step
                     self.alg.process_env_step(obs, rewards, dones, extras)
                     # Extract intrinsic rewards (only for logging)
@@ -109,6 +117,8 @@ class OnPolicyRunner:
 
             # Update policy
             loss_dict = self.alg.update()
+            if self.validate_finite:
+                assert_finite_tree(loss_dict, "training.losses")
 
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
@@ -167,7 +177,7 @@ class OnPolicyRunner:
     def load(self, path: str, load_optimizer: bool = True, map_location: str | None = None) -> dict:
         loaded_dict = torch.load(path, weights_only=False, map_location=map_location)
         # Load model
-        resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"])
+        resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"], strict=True)
         # Load RND model if used
         if self.alg_cfg["rnd_cfg"]:
             self.alg.rnd.load_state_dict(loaded_dict["rnd_state_dict"])

@@ -61,6 +61,11 @@ parser.add_argument("--task", type=str, default=None, choices=tasks, help="Name 
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
 parser.add_argument(
+    "--smoke-marker",
+    action="store_true",
+    help="Print a machine-checkable marker only after a smoke training run completes.",
+)
+parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
 )
 # append RSL-RL cli arguments
@@ -110,9 +115,7 @@ if args_cli.distributed and version.parse(installed_version) < version.parse(RSL
 
 """Rest everything follows."""
 
-import inspect
 import os
-import shutil
 from datetime import datetime
 
 import gymnasium as gym
@@ -133,7 +136,6 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 from rsl_rl.runners import OnPolicyRunner  # TODO: Consider printing the experiment name in the terminal.
 
 import locolab.source.locomotion.tasks  # noqa: F401
-from locolab.source.locomotion.utils.export_deploy_cfg import export_deploy_cfg
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -167,7 +169,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         agent_cfg.seed = seed
 
     # specify directory for logging experiments
-    log_root_path = str(logs_root / "rsl_rl" / agent_cfg.experiment_name)
+    output_experiment_name = cli_args.get_output_experiment_name(agent_cfg)
+    resume_experiment_name = cli_args.get_resume_experiment_name(agent_cfg)
+    log_root_path = str(logs_root / "rsl_rl" / output_experiment_name)
+    resume_root_path = str(logs_root / "rsl_rl" / resume_experiment_name)
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
     # specify directory for logging runs: {time-stamp}_{run_name}
     log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -186,7 +191,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # save resume path before creating a new log_dir
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
-        resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
+        resume_path = get_checkpoint_path(resume_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
 
     video_dir = None
     video_fps = None
@@ -212,7 +217,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
     # create runner from rsl-rl
-    runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+    runner = OnPolicyRunner(
+        env,
+        cli_args.runner_cfg_to_dict(agent_cfg, validate_finite=args_cli.smoke_marker),
+        log_dir=log_dir,
+        device=agent_cfg.device,
+    )
     if args_cli.video:
         runner.logger.register_video_dir(
             video_dir,
@@ -240,6 +250,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if args_cli.video:
         runner.logger.flush_videos()
     runner.logger.close()
+    if args_cli.smoke_marker:
+        print(f"TRAINING_SMOKE_OK task={args_cli.task} iterations={agent_cfg.max_iterations}")
 
 
 if __name__ == "__main__":

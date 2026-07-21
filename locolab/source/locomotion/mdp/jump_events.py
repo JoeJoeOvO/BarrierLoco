@@ -26,12 +26,43 @@ def _sample_ranges(
 
 
 def _ensure_timed_jump_buffers(env: ManagerBasedEnv, dtype: torch.dtype) -> None:
-    if not hasattr(env, "_jump_episode_mask") or env._jump_episode_mask.shape[0] != env.num_envs:
-        env._jump_episode_mask = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
-        env._jump_initial_phase_time = torch.zeros(env.num_envs, dtype=dtype, device=env.device)
-        env._jump_trigger_position = torch.zeros((env.num_envs, 3), dtype=dtype, device=env.device)
-        env._jump_target_height = torch.zeros(env.num_envs, dtype=dtype, device=env.device)
-        env._jump_reset_pending = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    device = torch.device(env.device)
+    specifications = {
+        "_jump_episode_mask": ((env.num_envs,), torch.bool),
+        "_jump_initial_phase_time": ((env.num_envs,), dtype),
+        "_jump_trigger_position": ((env.num_envs, 3), dtype),
+        "_jump_target_height": ((env.num_envs,), dtype),
+        "_jump_reset_pending": ((env.num_envs,), torch.bool),
+    }
+    for name, (shape, expected_dtype) in specifications.items():
+        value = getattr(env, name, None)
+        if (
+            not isinstance(value, torch.Tensor)
+            or tuple(value.shape) != shape
+            or value.device != device
+            or value.dtype != expected_dtype
+        ):
+            setattr(env, name, torch.zeros(shape, dtype=expected_dtype, device=device))
+
+
+def _resolve_leg_joint_ids(
+    env: ManagerBasedEnv,
+    asset: Articulation,
+    asset_name: str,
+    leg_joint_names: list[str],
+    expected_count: int,
+) -> torch.Tensor:
+    cache = getattr(env, "_jump_leg_joint_ids", None)
+    if not isinstance(cache, dict):
+        cache = {}
+        env._jump_leg_joint_ids = cache
+    cache_key = (asset_name, tuple(leg_joint_names))
+    if cache_key not in cache:
+        joint_ids, matched_names = asset.find_joints(leg_joint_names, preserve_order=True)
+        if len(joint_ids) != expected_count:
+            raise ValueError(f"Expected {expected_count} Go2W reference joints, matched {matched_names}.")
+        cache[cache_key] = torch.as_tensor(joint_ids, dtype=torch.long, device=asset.device)
+    return cache[cache_key]
 
 
 def _stratified_phase_times(
@@ -110,22 +141,20 @@ def reset_timed_jump_or_flat_state(
 
     jump_mask = torch.rand(len(env_ids), device=asset.device) < jump_probability
     phase_time = torch.zeros(len(env_ids), device=asset.device, dtype=dtype)
-    jump_count = int(jump_mask.sum().item())
-    phase_time[jump_mask] = _stratified_phase_times(jump_count, phase_lower, phase_upper, asset.device, dtype)
+    jump_ids = jump_mask.nonzero(as_tuple=False).flatten()
+    phase_time[jump_ids] = _stratified_phase_times(jump_ids.numel(), phase_lower, phase_upper, asset.device, dtype)
     trigger_position = root_position.clone()
 
-    if jump_count > 0:
-        sample = trajectory.sample(phase_time)
-        zero_angle = torch.zeros(len(env_ids), device=asset.device, dtype=dtype)
-        yaw_quat = math_utils.quat_from_euler_xyz(zero_angle, zero_angle, pose_samples[:, 5])
+    if jump_ids.numel() > 0:
+        sample = trajectory.sample(phase_time[jump_ids])
+        zero_angle = torch.zeros(jump_ids.numel(), device=asset.device, dtype=dtype)
+        yaw_quat = math_utils.quat_from_euler_xyz(zero_angle, zero_angle, pose_samples[jump_ids, 5])
         displacement = sample.base_position - trajectory.base_position[0]
-        root_position[jump_mask] += math_utils.quat_apply(yaw_quat[jump_mask], displacement[jump_mask])
+        root_position[jump_ids] += math_utils.quat_apply(yaw_quat, displacement)
 
         pitch_quat = math_utils.quat_from_euler_xyz(zero_angle, sample.base_pitch, zero_angle)
-        root_orientation[jump_mask] = math_utils.quat_mul(root_orientation[jump_mask], pitch_quat[jump_mask])
-        root_velocity[jump_mask, :3] = math_utils.quat_apply(
-            yaw_quat[jump_mask], sample.base_linear_velocity[jump_mask]
-        )
+        root_orientation[jump_ids] = math_utils.quat_mul(root_orientation[jump_ids], pitch_quat)
+        root_velocity[jump_ids, :3] = math_utils.quat_apply(yaw_quat, sample.base_linear_velocity)
         reference_angular_velocity = torch.stack(
             (
                 torch.zeros_like(sample.base_pitch_rate),
@@ -134,16 +163,13 @@ def reset_timed_jump_or_flat_state(
             ),
             dim=-1,
         )
-        root_velocity[jump_mask, 3:] = math_utils.quat_apply(yaw_quat[jump_mask], reference_angular_velocity[jump_mask])
+        root_velocity[jump_ids, 3:] = math_utils.quat_apply(yaw_quat, reference_angular_velocity)
 
-        leg_joint_ids, matched_names = asset.find_joints(leg_joint_names, preserve_order=True)
-        if len(leg_joint_ids) != sample.joint_position.shape[-1]:
-            raise ValueError(
-                f"Expected {sample.joint_position.shape[-1]} Go2W reference joints, matched {matched_names}."
-            )
-        local_jump_ids = jump_mask.nonzero(as_tuple=False).flatten()
-        joint_position[local_jump_ids[:, None], leg_joint_ids] = sample.joint_position[jump_mask]
-        joint_velocity[local_jump_ids[:, None], leg_joint_ids] = sample.joint_velocity[jump_mask]
+        leg_joint_ids = _resolve_leg_joint_ids(
+            env, asset, asset_cfg.name, leg_joint_names, sample.joint_position.shape[-1]
+        )
+        joint_position[jump_ids[:, None], leg_joint_ids] = sample.joint_position
+        joint_velocity[jump_ids[:, None], leg_joint_ids] = sample.joint_velocity
 
     joint_position_limits = asset.data.soft_joint_pos_limits[env_ids]
     joint_position.clamp_(joint_position_limits[..., 0], joint_position_limits[..., 1])

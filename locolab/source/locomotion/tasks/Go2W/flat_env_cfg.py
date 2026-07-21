@@ -130,9 +130,9 @@ class Go2WRewardsCfg(LocomotionRewardsCfg):
         params={"command_name": "base_velocity"},
     )
     action_smoothness = RewTerm(
-        func=mdp.action_smoothness_penalty,
+        func=mdp.ActionSmoothnessPenalty,
         weight=-0.002,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+        params={"action_term_names": ["joint_pos", "joint_vel"]},
     )
 
     collision = RewTerm(
