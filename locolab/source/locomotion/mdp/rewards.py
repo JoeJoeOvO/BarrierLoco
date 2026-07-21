@@ -66,6 +66,17 @@ def track_ang_vel_z_exp(
     return torch.exp(-ang_vel_error / std**2)
 
 
+def penalize_lin_vel_xy(
+    env: ManagerBasedRLEnv,
+    command_name: str = "base_velocity",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize planar velocity tracking error in the base frame."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)[:, :2]
+    return torch.sum(torch.abs(command - asset.data.root_lin_vel_b[:, :2]), dim=1)
+
+
 def track_lin_vel_xy_yaw_frame_exp(
     env: ManagerBasedRLEnv,
     std: float,
@@ -284,7 +295,11 @@ def stand_still(
     """Penalize joint deviation from default when command is near zero."""
     asset: Articulation = env.scene[asset_cfg.name]
 
-    reward = torch.sum(torch.abs(asset.data.joint_pos - asset.data.default_joint_pos), dim=1)
+    joint_ids = asset_cfg.joint_ids if asset_cfg.joint_ids is not None else slice(None)
+    reward = torch.sum(
+        torch.abs(asset.data.joint_pos[:, joint_ids] - asset.data.default_joint_pos[:, joint_ids]),
+        dim=1,
+    )
     cmd_norm = torch.norm(env.command_manager.get_command(command_name), dim=1)
     return reward * (cmd_norm < 0.1)
 

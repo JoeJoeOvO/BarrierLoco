@@ -237,8 +237,15 @@ def terrain_levels_reward(
     Returns:
         The mean terrain level across all environments.
     """
-    asset = env.scene[asset_cfg.name]
     terrain = env.scene.terrain
+
+    # Curriculum terms also run during the initial environment reset, before the
+    # robot has produced any motion.  Updating the terrain there would interpret
+    # the spawn offset as episode progress and immediately reshuffle levels.
+    if env.common_step_counter == 0:
+        return torch.mean(terrain.terrain_levels.float())
+
+    asset = env.scene[asset_cfg.name]
 
     # HIMLoco/legged_gym style: progress if the robot traverses half a terrain tile.
     distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1)

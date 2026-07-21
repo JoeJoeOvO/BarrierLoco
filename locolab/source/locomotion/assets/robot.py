@@ -14,17 +14,8 @@ _ASSETS_DIR = pathlib.Path(__file__).parent.resolve()
 
 # Unitree Go2W Configuration (Wheel-Legged Robot)
 GO2W_CFG = ArticulationCfg(
-    spawn=sim_utils.UrdfFileCfg(
-        asset_path=str(_ASSETS_DIR / "Go2W" / "urdf" / "go2w.urdf"),
-        usd_dir=str(_ASSETS_DIR / "Go2W" / "usd"),
-        usd_file_name="go2w.usd",
-        fix_base=False,
-        merge_fixed_joints=True,
-        self_collision=False,
-        replace_cylinders_with_capsules=False,
-        joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
-            gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(stiffness=0.0, damping=0.0)
-        ),
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=str(_ASSETS_DIR / "Go2W" / "usd" / "go2w.usd"),
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -58,8 +49,8 @@ GO2W_CFG = ArticulationCfg(
             joint_names_expr=["^(?!.*_foot_joint).*"],
             effort_limit_sim=23.5,
             velocity_limit_sim=30.0,
-            stiffness=25.0,
-            damping=0.5,
+            stiffness=40.0,
+            damping=1.0,
             friction=0.0,
         ),
         "wheels": ImplicitActuatorCfg(
