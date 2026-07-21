@@ -108,6 +108,19 @@ gym.register(
     },
 )
 
+gym.register(
+    id="OmniBot-Go2W-Recover-DreamWaQ-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.Go2W.recover_env_cfg:Go2WRecoverDreamWaQEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.Go2W.recover_env_cfg:Go2WRecoverDreamWaQPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": (
+            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WRecoverDreamWaQPPORunnerCfg"
+        ),
+    },
+)
+
 # Legacy alias (backward compatibility)
 gym.register(
     id="OmniBot-Go2W-Velocity",

@@ -413,6 +413,14 @@ class Go2WRoughDreamWaQPPORunnerCfg(Go2WDreamWaQPPORunnerCfg):
 
 
 @configclass
+class Go2WRecoverDreamWaQPPORunnerCfg(Go2WRoughDreamWaQPPORunnerCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.max_iterations = 5000
+        self.experiment_name = "omnibot_go2w_recover_dreamwaq_v0"
+
+
+@configclass
 class WFTRON1DreamWaQPPORunnerCfg(DreamWaQPPORunnerCfg):
     max_iterations = 20000
     save_interval = 100
