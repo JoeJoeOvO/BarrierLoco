@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import MISSING, field
-from typing import Literal
+from typing import Literal, cast
 
 from isaaclab.utils import configclass
 
@@ -177,6 +177,7 @@ class Go2WFlatMLPPPORunnerCfg(BasePPORunnerCfg):
 class Go2WRoughMLPPPORunnerCfg(BasePPORunnerCfg):
     def __post_init__(self) -> None:
         self.experiment_name = "omnibot_go2w_rough_mlp_v0"
+        self.algorithm.learning_rate = 3.0e-4
 
 
 @configclass
@@ -282,16 +283,37 @@ class RecurrentDecoderPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 
 
 @configclass
-class Go2WFlatRnnDecoderPPORunnerCfg(RecurrentDecoderPPORunnerCfg):
+class Go2WRecurrentDecoderPPORunnerCfg(RecurrentDecoderPPORunnerCfg):
+    """Go2W checkpoint-compatible recurrent optimizer settings."""
+
     def __post_init__(self) -> None:
+        self.empirical_normalization = None
+        algorithm = cast(RecurrentDecoderPpoAlgorithmCfg, self.algorithm)
+        if algorithm.decoder_cfg is not None:
+            if algorithm.decoder_cfg.actor is not None:
+                algorithm.decoder_cfg.actor.learning_rate = 3.0e-4
+            if algorithm.decoder_cfg.critic is not None:
+                algorithm.decoder_cfg.critic.learning_rate = 3.0e-4
+
+
+@configclass
+class Go2WFlatRnnDecoderPPORunnerCfg(Go2WRecurrentDecoderPPORunnerCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
         self.experiment_name = "omnibot_go2w_flat_rnn_v0"
         self.algorithm.desired_kl = 0.01
 
 
 @configclass
-class Go2WRoughRnnDecoderPPORunnerCfg(RecurrentDecoderPPORunnerCfg):
+class Go2WRoughRnnDecoderPPORunnerCfg(Go2WRecurrentDecoderPPORunnerCfg):
     def __post_init__(self) -> None:
+        super().__post_init__()
         self.experiment_name = "omnibot_go2w_rough_rnn_v0"
+        policy = cast(RslRlPpoActorCriticRecurrentCfg, self.policy)
+        policy.rnn_hidden_dim = 256
+        algorithm = cast(RecurrentDecoderPpoAlgorithmCfg, self.algorithm)
+        if algorithm.decoder_cfg is not None:
+            algorithm.decoder_cfg.critic = None
         self.algorithm.desired_kl = 0.01
 
 
@@ -360,15 +382,34 @@ class DreamWaQPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 
 
 @configclass
-class Go2WFlatDreamWaQPPORunnerCfg(DreamWaQPPORunnerCfg):
+class Go2WDreamWaQPPORunnerCfg(DreamWaQPPORunnerCfg):
+    """Go2W checkpoint-compatible DreamWaQ settings without changing WF-TRON1 defaults."""
+
     def __post_init__(self) -> None:
-        self.experiment_name = "omnibot_go2w_flat_dreamwaq_v0"
+        self.empirical_normalization = None
+        policy = cast(RslRlPpoActorCriticDreamWaQCfg, self.policy)
+        policy.noise_std_type = "log"
+        policy.actor_obs_normalization = False
+        policy.critic_obs_normalization = False
+        algorithm = cast(RslRlPpoDreamWaQAlgorithmCfg, self.algorithm)
+        algorithm.learning_rate = 3.0e-4
+        algorithm.vae_learning_rate = 3.0e-4
 
 
 @configclass
-class Go2WRoughDreamWaQPPORunnerCfg(DreamWaQPPORunnerCfg):
+class Go2WFlatDreamWaQPPORunnerCfg(Go2WDreamWaQPPORunnerCfg):
     def __post_init__(self) -> None:
+        super().__post_init__()
+        self.experiment_name = "omnibot_go2w_flat_dreamwaq_v0"
+        self.policy.reconstruction_mask_indices = [6, 7, 8, *range(37, 53)]
+
+
+@configclass
+class Go2WRoughDreamWaQPPORunnerCfg(Go2WDreamWaQPPORunnerCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
         self.experiment_name = "omnibot_go2w_rough_dreamwaq_v0"
+        self.policy.reconstruction_mask_indices = [6, 7, 8, *range(37, 53)]
 
 
 @configclass

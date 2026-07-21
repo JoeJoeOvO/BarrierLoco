@@ -142,7 +142,9 @@ class ActorCriticDreamWaQ(nn.Module):
 
     def act(self, obs: TensorDict, **kwargs: dict[str, Any]) -> torch.Tensor:
         del kwargs
-        actor_input = self._compute_actor_input(obs, sample_latent=self.training)
+        # PPO compares the current distribution with statistics stored during rollout.
+        # Conditioning on VAE samples here would change that distribution on every update epoch.
+        actor_input = self._compute_actor_input(obs, sample_latent=False)
         self._update_distribution(actor_input)
         return self.distribution.sample()
 

@@ -85,13 +85,14 @@ class DreamWaQVAE(nn.Module):
     ) -> dict[str, torch.Tensor]:
         (latent, velocity), (latent_mu, latent_logvar, _vel_mu, _vel_logvar) = self.forward(history_obs)
 
-        reconstruction_target = next_obs
-        if self.reconstruction_mask_indices:
-            reconstruction_target = reconstruction_target.clone()
-            reconstruction_target[..., list(self.reconstruction_mask_indices)] = 0.0
-
         reconstruction = self.decode(latent, velocity)
-        reconstruction_loss = F.mse_loss(reconstruction, reconstruction_target, reduction="none").mean(dim=-1)
+        squared_error = F.mse_loss(reconstruction, next_obs, reduction="none")
+        if self.reconstruction_mask_indices:
+            valid_mask = torch.ones_like(squared_error)
+            valid_mask[..., list(self.reconstruction_mask_indices)] = 0.0
+            reconstruction_loss = (squared_error * valid_mask).sum(dim=-1) / valid_mask.sum(dim=-1).clamp_min(1.0)
+        else:
+            reconstruction_loss = squared_error.mean(dim=-1)
         velocity_loss = F.mse_loss(velocity, velocity_target, reduction="none").mean(dim=-1)
         kld_loss = -0.5 * torch.sum(1 + latent_logvar - latent_mu.pow(2) - latent_logvar.exp(), dim=-1)
         loss = reconstruction_loss + velocity_loss + kld_weight * kld_loss
