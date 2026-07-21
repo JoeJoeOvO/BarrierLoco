@@ -45,6 +45,39 @@ gym.register(
 )
 
 gym.register(
+    id="OmniBot-Go2W-Handstand-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.Go2W.two_wheel_balance_env_cfg:Go2WHandstandEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.Go2W.two_wheel_balance_env_cfg:Go2WHandstandPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": ("locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WHandstandPPORunnerCfg"),
+    },
+)
+
+gym.register(
+    id="OmniBot-Go2W-Upright-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.Go2W.two_wheel_balance_env_cfg:Go2WUprightEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.Go2W.two_wheel_balance_env_cfg:Go2WUprightPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": ("locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WUprightPPORunnerCfg"),
+    },
+)
+
+gym.register(
+    id="OmniBot-Go2W-Crawl-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.Go2W.crawl_env_cfg:Go2WCrawlEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.Go2W.crawl_env_cfg:Go2WCrawlPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": ("locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WCrawlPPORunnerCfg"),
+    },
+)
+
+gym.register(
     id="OmniBot-Go2W-Flat-DreamWaQ-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
@@ -92,6 +125,19 @@ gym.register(
         "env_cfg_entry_point": f"{__name__}.Go2W.rough_env_cfg:Go2WRoughEnvCfg",
         "play_env_cfg_entry_point": f"{__name__}.Go2W.rough_env_cfg:Go2WRoughPlayEnvCfg",
         "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WRoughMLPPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="OmniBot-Go2W-HighPlatform-MLP-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.Go2W.high_platform_env_cfg:Go2WHighPlatformEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.Go2W.high_platform_env_cfg:Go2WHighPlatformPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": (
+            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WHighPlatformMLPPPORunnerCfg"
+        ),
     },
 )
 

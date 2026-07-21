@@ -174,10 +174,41 @@ class Go2WFlatMLPPPORunnerCfg(BasePPORunnerCfg):
 
 
 @configclass
+class Go2WHandstandPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.experiment_name = "omnibot_go2w_handstand_v0"
+
+
+@configclass
+class Go2WUprightPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.experiment_name = "omnibot_go2w_upright_v0"
+
+
+@configclass
+class Go2WCrawlPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.experiment_name = "omnibot_go2w_crawl_v0"
+
+
+@configclass
 class Go2WRoughMLPPPORunnerCfg(BasePPORunnerCfg):
     def __post_init__(self) -> None:
         self.experiment_name = "omnibot_go2w_rough_mlp_v0"
         self.algorithm.learning_rate = 3.0e-4
+
+
+@configclass
+class Go2WHighPlatformMLPPPORunnerCfg(Go2WRoughMLPPPORunnerCfg):
+    """Rough MLP runner kept in the same log tree for direct checkpoint resume."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.max_iterations = 5000
+        self.run_name = "highplatform"
 
 
 @configclass
