@@ -181,6 +181,14 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_thigh", ".*_calf", "base"]),
         },
     )
+    feet_stumble = RewTerm(
+        func=mdp.feet_stumble,
+        weight=-0.1,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "ratio_threshold": 5.0,
+        },
+    )
     penalize_lin_vel_xy = RewTerm(
         func=mdp.penalize_lin_vel_xy,
         weight=-0.05,

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import torch
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.utils import math as math_utils
 
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation
@@ -68,6 +69,15 @@ def body_lin_vel(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCf
     asset: Articulation = env.scene[asset_cfg.name]
     # body_lin_vel_w shape: (num_envs, num_bodies, 3)
     vel = asset.data.body_lin_vel_w[:, asset_cfg.body_ids]
+    return vel.reshape(vel.shape[0], -1)
+
+
+def body_lin_vel_b(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """The linear velocity of specified bodies in each body's local frame."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    body_vel_w = asset.data.body_lin_vel_w[:, asset_cfg.body_ids]
+    body_quat_w = asset.data.body_quat_w[:, asset_cfg.body_ids]
+    vel = math_utils.quat_apply_inverse(body_quat_w.reshape(-1, 4), body_vel_w.reshape(-1, 3)).reshape_as(body_vel_w)
     return vel.reshape(vel.shape[0], -1)
 
 

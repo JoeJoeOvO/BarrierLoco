@@ -187,6 +187,11 @@ class Go2WObservationsCfg(LocomotionObservationsCfg):
     class CriticCfg(LocomotionObservationsCfg.CriticCfg):
         """Observations for critic group - only leg joint positions."""
 
+        feet_lin_vel = ObsTerm(
+            func=mdp.body_lin_vel_b,
+            clip=(-100, 100),
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=".*_foot")},
+        )
         feet_contact_force = ObsTerm(
             func=mdp.body_contact_force,
             scale=0.01,
