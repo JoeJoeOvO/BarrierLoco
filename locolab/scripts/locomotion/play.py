@@ -25,10 +25,28 @@ logs_root = locolab_root / "logs"
 sys.path.append(str(project_root))
 # Prefer local rsl_rl package in this repo over any globally installed one.
 sys.path.insert(0, str(locolab_root))
+
+from locolab.source.locomotion.utils.video import (  # noqa: E402
+    DEFAULT_VIDEO_DURATION_S,
+    configure_robot_follow_view,
+    make_video_recording_plan,
+)
+
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
+parser.add_argument(
+    "--video_length",
+    type=int,
+    default=None,
+    help="Encoded video frame target. Overrides --video_duration_s when provided.",
+)
+parser.add_argument(
+    "--video_duration_s",
+    type=float,
+    default=DEFAULT_VIDEO_DURATION_S,
+    help="Duration of the recorded video in seconds.",
+)
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
@@ -84,6 +102,8 @@ def main():
         entry_point_key="play_env_cfg_entry_point",
     )
     agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
+    if args_cli.video:
+        configure_robot_follow_view(env_cfg.viewer)
 
     # specify directory for logging experiments
     log_root_path = str(logs_root / "rsl_rl" / cli_args.get_output_experiment_name(agent_cfg))
@@ -102,6 +122,13 @@ def main():
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+    video_plan = None
+    if args_cli.video:
+        video_plan = make_video_recording_plan(
+            step_dt=env.unwrapped.step_dt,
+            duration_s=args_cli.video_duration_s,
+            frame_count=args_cli.video_length,
+        )
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
@@ -112,7 +139,8 @@ def main():
         video_kwargs = {
             "video_folder": os.path.join(log_dir, "videos", "play"),
             "step_trigger": lambda step: step == 0,
-            "video_length": args_cli.video_length,
+            "video_length": video_plan.frame_count,
+            "fps": video_plan.fps,
             "disable_logger": True,
         }
         print("[INFO] Recording videos during training.")
@@ -173,10 +201,10 @@ def main():
             actions = policy(obs)
             # env stepping
             obs, _, _, _ = env.step(actions)
-        if args_cli.video:
+        if video_plan is not None:
             timestep += 1
             # Exit the play loop after recording one video
-            if timestep == args_cli.video_length:
+            if timestep >= video_plan.simulation_steps:
                 break
 
         # time delay for real-time evaluation

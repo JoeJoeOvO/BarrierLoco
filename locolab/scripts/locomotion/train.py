@@ -136,6 +136,7 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 from rsl_rl.runners import OnPolicyRunner  # TODO: Consider printing the experiment name in the terminal.
 
 import locolab.source.locomotion.tasks  # noqa: F401
+from locolab.source.locomotion.utils.video import configure_robot_follow_view
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -183,6 +184,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     log_dir = os.path.join(log_root_path, log_dir)
 
     # create isaac environment
+    if args_cli.video:
+        configure_robot_follow_view(env_cfg.viewer)
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
     # convert to single-agent instance if required by the RL algorithm
@@ -207,6 +210,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             "video_folder": video_dir,
             "step_trigger": lambda step: step > 0 and step % step_interval == 0,
             "video_length": args_cli.video_length,
+            "fps": video_fps,
             "disable_logger": True,
         }
         print("[INFO] Recording videos during training.")
