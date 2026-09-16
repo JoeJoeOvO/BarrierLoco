@@ -335,8 +335,9 @@ class Logger:
         writing it.  When force=True (called from flush_videos after env.close()) the
         stability check is skipped because RecordVideo.close() already finalised every file.
 
-        The W&B global_step is converted from the env step in the video filename to a
-        training iteration (env_step // steps_per_iter) so it aligns with scalar metrics.
+        Publish at the current training iteration once the clip is complete. The
+        filename counter restarts on resume and recording itself spans iterations;
+        logging at its start step would be a backwards W&B write and get discarded.
         """
         if not self.writer or self.disable_logs or self.logger_type != "wandb":
             return
@@ -348,7 +349,6 @@ class Logger:
 
             fps = source["fps"]
             tag = str(source["tag"])
-            steps_per_iter = max(source.get("steps_per_iter", 1) or 1, 1)
 
             for video_path in sorted(video_dir.glob("*.mp4")):
                 resolved_path = str(video_path.resolve())
@@ -366,11 +366,8 @@ class Logger:
                     if previous_state != current_state:
                         continue
 
-                env_step = self._parse_video_step(video_path)
-                video_iter = env_step // steps_per_iter if env_step is not None else step
-
                 try:
-                    self.writer.log_video(resolved_path, tag=tag, global_step=video_iter, fps=fps)
+                    self.writer.log_video(resolved_path, tag=tag, global_step=step, fps=fps)
                 except Exception as exc:
                     print(f"[WARNING] Failed to upload training video '{resolved_path}' to W&B: {exc}")
                 else:

@@ -21,10 +21,12 @@ all_packages.extend(
 
 PACKAGE_DATA = {
     "locolab.source.locomotion.assets": [
+        "Go2W/urdf/*.urdf",
         "Go2W/usd/*.usd",
         "Go2W/usd/configuration/*.usd",
     ],
     "locolab.source.locomotion.mdp": ["reference_motions/*.json"],
+    "locolab.source.locomotion.mdp.m20": ["LICENSE", "LICENSE-robot_lab", "README.md"],
 }
 
 setup(

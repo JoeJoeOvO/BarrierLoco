@@ -28,13 +28,16 @@ sys.path.insert(0, str(locolab_root))
 
 from locolab.source.locomotion.utils.video import (  # noqa: E402
     DEFAULT_VIDEO_DURATION_S,
+    TerrainVideoView,
     configure_robot_follow_view,
+    configure_terrain_view,
     make_video_recording_plan,
 )
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
+parser.add_argument("--video_terrain", type=str, default=None, help="Fix video camera on this curriculum terrain type.")
 parser.add_argument(
     "--video_length",
     type=int,
@@ -103,7 +106,11 @@ def main():
     )
     agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
     if args_cli.video:
-        configure_robot_follow_view(env_cfg.viewer)
+        if args_cli.video_terrain:
+            index = configure_terrain_view(env_cfg, args_cli.video_terrain)
+            print(f"[INFO] Video terrain: {args_cli.video_terrain}, env_index={index}, fixed tile view")
+        else:
+            configure_robot_follow_view(env_cfg.viewer)
 
     # specify directory for logging experiments
     log_root_path = str(logs_root / "rsl_rl" / cli_args.get_output_experiment_name(agent_cfg))
@@ -122,6 +129,8 @@ def main():
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+    if args_cli.video and args_cli.video_terrain:
+        env = TerrainVideoView(env)
     video_plan = None
     if args_cli.video:
         video_plan = make_video_recording_plan(

@@ -8,6 +8,7 @@
 """Launch Isaac Sim Simulator first."""
 
 
+import os
 import pathlib
 import sys
 
@@ -44,6 +45,7 @@ import cli_args  # isort: skip
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
+parser.add_argument("--video_terrain", type=str, default=None, help="Fix video camera on this curriculum terrain type.")
 parser.add_argument(
     "--video_length",
     type=int,
@@ -75,8 +77,10 @@ AppLauncher.add_app_launcher_args(parser)
 argcomplete.autocomplete(parser)
 args_cli, hydra_args = parser.parse_known_args()
 
-# always enable cameras to record video
-if args_cli.video:
+# Only rank zero owns rendering, videos, and shared run artifacts.
+is_primary = not args_cli.distributed or int(os.environ.get("RANK", "0")) == 0
+record_video = args_cli.video and is_primary
+if record_video:
     args_cli.enable_cameras = True
 
 # clear out sys.argv for Hydra
@@ -115,7 +119,6 @@ if args_cli.distributed and version.parse(installed_version) < version.parse(RSL
 
 """Rest everything follows."""
 
-import os
 from datetime import datetime
 
 import gymnasium as gym
@@ -136,7 +139,7 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 from rsl_rl.runners import OnPolicyRunner  # TODO: Consider printing the experiment name in the terminal.
 
 import locolab.source.locomotion.tasks  # noqa: F401
-from locolab.source.locomotion.utils.video import configure_robot_follow_view
+from locolab.source.locomotion.utils.video import TerrainVideoView, configure_robot_follow_view, configure_terrain_view
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -177,6 +180,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
     # specify directory for logging runs: {time-stamp}_{run_name}
     log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    if args_cli.distributed:
+        # torchrun provides a common rendezvous ID; launchers may supply a readable timestamp.
+        log_dir = os.environ.get("OMNIBOT_RUN_TIMESTAMP") or os.environ.get("TORCHELASTIC_RUN_ID")
+        if not log_dir or log_dir == "none" or pathlib.Path(log_dir).name != log_dir or log_dir in (".", ".."):
+            raise ValueError("Distributed training requires a shared OMNIBOT_RUN_TIMESTAMP or torchrun rendezvous ID.")
+        print(
+            f"[DISTRIBUTED] rank={app_launcher.global_rank} local_rank={app_launcher.local_rank} "
+            f"seed={env_cfg.seed} num_envs={env_cfg.scene.num_envs} video={record_video}"
+        )
     # This way, the Ray Tune workflow can extract experiment name.
     print(f"Exact experiment name requested from command line: {log_dir}")
     if agent_cfg.run_name:
@@ -184,9 +196,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     log_dir = os.path.join(log_root_path, log_dir)
 
     # create isaac environment
-    if args_cli.video:
-        configure_robot_follow_view(env_cfg.viewer)
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+    if record_video:
+        if args_cli.video_terrain:
+            index = configure_terrain_view(env_cfg, args_cli.video_terrain)
+            print(f"[INFO] Video terrain: {args_cli.video_terrain}, env_index={index}, fixed tile view")
+        else:
+            configure_robot_follow_view(env_cfg.viewer)
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if record_video else None)
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
@@ -200,7 +216,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     video_fps = None
 
     # wrap for video recording
-    if args_cli.video:
+    if record_video:
+        if args_cli.video_terrain:
+            env = TerrainVideoView(env)
         video_dir = os.path.join(log_dir, "videos", "train")
         video_fps = max(int(round(1.0 / env.unwrapped.step_dt)), 1)
         # Convert iteration-based interval to env-step-based interval for RecordVideo
@@ -227,7 +245,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         log_dir=log_dir,
         device=agent_cfg.device,
     )
-    if args_cli.video:
+    if record_video:
         runner.logger.register_video_dir(
             video_dir,
             tag="Videos/train",
@@ -243,15 +261,23 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         runner.load(resume_path)
 
     # dump the configuration into log-directory
-    dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
-    dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
+    if is_primary:
+        dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
+        dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
 
     # run training
     runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
 
+    if args_cli.smoke_marker and args_cli.distributed:
+        parameters = torch.cat([p.detach().reshape(-1) for p in runner.alg.policy.parameters()])
+        reference = parameters.clone()
+        torch.distributed.broadcast(reference, src=0)
+        torch.testing.assert_close(parameters, reference, rtol=0.0, atol=1.0e-6)
+        print(f"DISTRIBUTED_PARAMETERS_OK rank={app_launcher.global_rank} seed={env_cfg.seed}")
+
     # close the simulator
     env.close()
-    if args_cli.video:
+    if record_video:
         runner.logger.flush_videos()
     runner.logger.close()
     if args_cli.smoke_marker:

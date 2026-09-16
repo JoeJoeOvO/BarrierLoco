@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -65,6 +66,39 @@ def track_ang_vel_z_exp(
     asset: RigidObject = env.scene[asset_cfg.name]
     ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_b[:, 2])
     return torch.exp(-ang_vel_error / std**2)
+
+
+def velocity_slack(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    min_ratio: float = 0.3,
+    max_ratio: float = 1.5,
+    command_threshold: float = 0.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward body-x speed inside an inclusive band in the commanded direction.
+
+    Uses the same body-frame velocity as the existing tracking rewards. Reverse
+    commands use a sign-adjusted interval; zero-x commands and stopped or
+    wrong-direction motion never receive this bonus. No gait-level scaling.
+    """
+    if not (math.isfinite(min_ratio) and math.isfinite(max_ratio) and 0.0 < min_ratio <= max_ratio):
+        raise ValueError("Velocity-slack ratios must be finite, positive, and ordered.")
+    if not (math.isfinite(command_threshold) and command_threshold >= 0.0):
+        raise ValueError("Velocity-slack command threshold must be finite and nonnegative.")
+    command_x = env.command_manager.get_command(command_name)[:, 0]
+    velocity_x = env.scene[asset_cfg.name].data.root_lin_vel_b[:, 0]
+    speed_command = command_x.abs()
+    aligned_speed = velocity_x * command_x.sign()
+    in_band = (
+        torch.isfinite(command_x)
+        & torch.isfinite(velocity_x)
+        & (speed_command > command_threshold)
+        & (aligned_speed > 0.0)
+        & (aligned_speed >= min_ratio * speed_command)
+        & (aligned_speed <= max_ratio * speed_command)
+    )
+    return in_band.to(dtype=velocity_x.dtype)
 
 
 def penalize_lin_vel_xy(
