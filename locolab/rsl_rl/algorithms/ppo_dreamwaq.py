@@ -65,7 +65,11 @@ class PPODreamWaQ(PPO):
             obs_batch, next_obs=next_obs_batch, kld_weight=self.kl_weight
         )
         valid = (dones_batch == 0).squeeze(-1)
-        if not torch.any(valid):
+        has_valid = valid.any()
+        any_rank_valid = has_valid.to(dtype=torch.int32)
+        if self.is_multi_gpu:
+            torch.distributed.all_reduce(any_rank_valid, op=torch.distributed.ReduceOp.MAX)
+        if not any_rank_valid.item():
             # No valid transitions in this minibatch — skip VAE update to avoid
             # training on post-reset next_obs that straddle episode boundaries.
             return {
@@ -75,10 +79,18 @@ class PPODreamWaQ(PPO):
                 "dreamwaq_kld": 0.0,
             }
 
-        vae_loss = vae_loss_dict["loss"][valid].mean()
-        recons_loss = vae_loss_dict["recons_loss"][valid].mean()
-        velocity_loss = vae_loss_dict["vel_loss"][valid].mean()
-        kld_loss = vae_loss_dict["kld_loss"][valid].mean()
+        if has_valid.item():
+            vae_loss = vae_loss_dict["loss"][valid].mean()
+            recons_loss = vae_loss_dict["recons_loss"][valid].mean()
+            velocity_loss = vae_loss_dict["vel_loss"][valid].mean()
+            kld_loss = vae_loss_dict["kld_loss"][valid].mean()
+        else:
+            # Still join gradient reduction and the optimizer step. Skipping only
+            # this rank would deadlock peers or desynchronize Adam state.
+            vae_loss = vae_loss_dict["loss"][valid].sum()
+            recons_loss = vae_loss.detach()
+            velocity_loss = vae_loss.detach()
+            kld_loss = vae_loss.detach()
 
         vae_loss.backward()
         if self.is_multi_gpu:

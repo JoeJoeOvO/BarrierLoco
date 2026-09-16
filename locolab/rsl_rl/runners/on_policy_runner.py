@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import time
 import warnings
+from datetime import timedelta
 
 import torch
 from rsl_rl.algorithms import PPO
@@ -140,7 +141,7 @@ class OnPolicyRunner:
             )
 
             # Save model
-            if it % self.cfg["save_interval"] == 0:
+            if self.logger.log_dir is not None and not self.logger.disable_logs and it % self.cfg["save_interval"] == 0:
                 self.save(os.path.join(self.logger.log_dir, f"model_{it}.pt"))  # type: ignore
 
         # Save the final model after training
@@ -148,6 +149,8 @@ class OnPolicyRunner:
             self.save(os.path.join(self.logger.log_dir, f"model_{self.current_learning_iteration}.pt"))
 
     def save(self, path: str, infos: dict | None = None) -> None:
+        if self.is_distributed and self.gpu_global_rank != 0:
+            return
         # Save model
         saved_dict = {
             "model_state_dict": self.alg.policy.state_dict(),
@@ -283,10 +286,15 @@ class OnPolicyRunner:
                 f"Global rank '{self.gpu_global_rank}' is greater than or equal to world size '{self.gpu_world_size}'."
             )
 
-        # Initialize torch distributed
-        torch.distributed.init_process_group(backend="nccl", rank=self.gpu_global_rank, world_size=self.gpu_world_size)
-        # Set device to the local rank
+        # Bind NCCL to this rank before initialization. Rank zero's camera/material
+        # initialization can take considerably longer than the headless ranks.
         torch.cuda.set_device(self.gpu_local_rank)
+        torch.distributed.init_process_group(
+            backend="nccl",
+            rank=self.gpu_global_rank,
+            world_size=self.gpu_world_size,
+            timeout=timedelta(minutes=30),
+        )
 
     def _construct_algorithm(self, obs: TensorDict) -> PPO:
         """Construct the actor-critic algorithm."""

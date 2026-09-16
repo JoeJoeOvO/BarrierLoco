@@ -28,7 +28,9 @@ def test_dreamwaq_go2w_configs_use_log_std_and_mask_unpredictable_targets() -> N
 
 def test_recent_rough_network_configs_preserve_training_and_checkpoint_contracts() -> None:
     source = RUNNERS.read_text()
-    rough_mlp = source[source.index("class Go2WRoughMLPPPORunnerCfg") :]
+    rough_mlp = source[
+        source.index("class Go2WRoughMLPPPORunnerCfg") : source.index("class Go2WHighPlatformMLPPPORunnerCfg")
+    ]
     recurrent = source[
         source.index("class RecurrentDecoderPPORunnerCfg") : source.index("class Go2WRecurrentDecoderPPORunnerCfg")
     ]
@@ -38,6 +40,12 @@ def test_recent_rough_network_configs_preserve_training_and_checkpoint_contracts
     go2w_dreamwaq = source[source.index("class Go2WDreamWaQPPORunnerCfg") :]
 
     assert "self.algorithm.learning_rate = 3.0e-4" in rough_mlp[:500]
+    assert 'self.policy.noise_std_type = "log"' in rough_mlp
+    assert "self.algorithm.entropy_coef = 0.008" in rough_mlp
+    rough_dreamwaq = source[
+        source.index("class Go2WRoughDreamWaQPPORunnerCfg") : source.index("class Go2WRecoverDreamWaQPPORunnerCfg")
+    ]
+    assert "self.algorithm.entropy_coef = 0.008" in rough_dreamwaq
     assert "learning_rate=1.0e-4" in recurrent
     assert "algorithm.decoder_cfg.actor.learning_rate = 3.0e-4" in go2w_recurrent[:1000]
     assert "algorithm.decoder_cfg.critic.learning_rate = 3.0e-4" in go2w_recurrent[:1000]
