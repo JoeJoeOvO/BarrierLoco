@@ -8,6 +8,17 @@ import gymnasium as gym
 
 # Go2W Flat Terrain
 gym.register(
+    id="OmniBot-Go2W-Gait-Flat-MLP-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.Go2W.gait_env_cfg:Go2WGaitEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.Go2W.gait_env_cfg:Go2WGaitPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WGaitMLPPPORunnerCfg",
+    },
+)
+
+gym.register(
     id="OmniBot-Go2W-Flat-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

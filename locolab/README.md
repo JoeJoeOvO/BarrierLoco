@@ -92,6 +92,12 @@ python scripts/locomotion/play.py --task=OmniBot-Go2W-Flat-v0 --checkpoint=logs/
 python scripts/locomotion/play.py --task=OmniBot-Go2W-Flat-v0 --video
 ```
 
+### Go2W Gait
+
+单策略覆盖 rolling、trot、bound 和高度控制，通过 10 维连续 command 与步态时钟实现。
+任务入口为 `OmniBot-Go2W-Gait-Flat-MLP-v0`。
+当前配置、代码范围、验证结果及保留产物见 [Go2W 步态开发整理](../docs/go2w_gait_overview.md)。
+
 ### 常用参数
 
 | 参数 | 说明 | 默认值 |

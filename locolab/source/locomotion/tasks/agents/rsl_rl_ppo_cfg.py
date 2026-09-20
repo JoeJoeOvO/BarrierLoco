@@ -176,6 +176,15 @@ class Go2WFlatMLPPPORunnerCfg(BasePPORunnerCfg):
 
 
 @configclass
+class Go2WGaitMLPPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.experiment_name = "omnibot_go2w_gait_flat_mlp_v0"
+        self.max_iterations = 5000
+        self.policy.noise_std_type = "log"
+
+
+@configclass
 class Go2WJumpMLPPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
     def __post_init__(self) -> None:
         super().__post_init__()

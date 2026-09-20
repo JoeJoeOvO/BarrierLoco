@@ -1,0 +1,3 @@
+# Keep the final media locally without mixing generated binaries into code commits.
+*.mp4
+*.png

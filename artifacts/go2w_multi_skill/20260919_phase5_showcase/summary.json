@@ -1,0 +1,210 @@
+{
+  "checkpoint": "/home/sshang/omnibot_data/workspaces/OmniBot-multi-skill-wtw-phase5-clockmask-20260919/locolab/logs/rsl_rl/omnibot_go2w_multi_skill_flat_mlp_v0/2026-09-19_17-00-23_multi_skill_wtw_phase5_pair10_rollclock0_4096_remote_gpu4_5k_video/model_4999.pt",
+  "task": "OmniBot-Go2W-MultiSkill-Flat-MLP-v0",
+  "seed": 42,
+  "fps": 50,
+  "frame_count": 3600,
+  "duration_s": 72.0,
+  "video": "/home/sshang/omnibot_data/workspaces/OmniBot-multi-skill-wtw-phase5-clockmask-20260919/locolab/logs/rsl_rl/omnibot_go2w_multi_skill_flat_mlp_v0/2026-09-19_17-00-23_multi_skill_wtw_phase5_pair10_rollclock0_4096_remote_gpu4_5k_video/videos/showcase_20260919/go2w_gaits_heights.mp4",
+  "segments": [
+    {
+      "gait": "trot",
+      "height_m": 0.34,
+      "duration_s": 8.0,
+      "command": [
+        0.6,
+        0.0,
+        0.0,
+        0.34,
+        2.5,
+        0.5,
+        0.0,
+        0.0,
+        0.5,
+        0.075
+      ],
+      "start_s": 0.0,
+      "end_s": 8.0,
+      "resets": 0,
+      "mean_actual_height_m_after_2s": 0.430062480767568,
+      "mean_actual_vx_mps_after_2s": 0.6247143548727035
+    },
+    {
+      "gait": "trot",
+      "height_m": 0.22,
+      "duration_s": 8.0,
+      "command": [
+        0.6,
+        0.0,
+        0.0,
+        0.22,
+        2.5,
+        0.5,
+        0.0,
+        0.0,
+        0.5,
+        0.075
+      ],
+      "start_s": 8.0,
+      "end_s": 16.0,
+      "resets": 0,
+      "mean_actual_height_m_after_2s": 0.3568269482254982,
+      "mean_actual_vx_mps_after_2s": 0.6119454002380371
+    },
+    {
+      "gait": "trot",
+      "height_m": 0.46,
+      "duration_s": 8.0,
+      "command": [
+        0.6,
+        0.0,
+        0.0,
+        0.46,
+        2.5,
+        0.5,
+        0.0,
+        0.0,
+        0.5,
+        0.075
+      ],
+      "start_s": 16.0,
+      "end_s": 24.0,
+      "resets": 0,
+      "mean_actual_height_m_after_2s": 0.4609283312161763,
+      "mean_actual_vx_mps_after_2s": 0.6305528374512991
+    },
+    {
+      "gait": "bound",
+      "height_m": 0.34,
+      "duration_s": 8.0,
+      "command": [
+        0.6,
+        0.0,
+        0.0,
+        0.34,
+        2.5,
+        0.0,
+        0.0,
+        0.5,
+        0.5,
+        0.075
+      ],
+      "start_s": 24.0,
+      "end_s": 32.0,
+      "resets": 0,
+      "mean_actual_height_m_after_2s": 0.4105558715264003,
+      "mean_actual_vx_mps_after_2s": 0.6212179352839787
+    },
+    {
+      "gait": "bound",
+      "height_m": 0.22,
+      "duration_s": 8.0,
+      "command": [
+        0.6,
+        0.0,
+        0.0,
+        0.22,
+        2.5,
+        0.0,
+        0.0,
+        0.5,
+        0.5,
+        0.075
+      ],
+      "start_s": 32.0,
+      "end_s": 40.0,
+      "resets": 0,
+      "mean_actual_height_m_after_2s": 0.34592570990324023,
+      "mean_actual_vx_mps_after_2s": 0.6087665152549744
+    },
+    {
+      "gait": "bound",
+      "height_m": 0.46,
+      "duration_s": 8.0,
+      "command": [
+        0.6,
+        0.0,
+        0.0,
+        0.46,
+        2.5,
+        0.0,
+        0.0,
+        0.5,
+        0.5,
+        0.075
+      ],
+      "start_s": 40.0,
+      "end_s": 48.0,
+      "resets": 0,
+      "mean_actual_height_m_after_2s": 0.4452587585647901,
+      "mean_actual_vx_mps_after_2s": 0.5914592003822327
+    },
+    {
+      "gait": "rolling",
+      "height_m": 0.34,
+      "duration_s": 8.0,
+      "command": [
+        0.6,
+        0.0,
+        0.0,
+        0.34,
+        2.5,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "start_s": 48.0,
+      "end_s": 56.0,
+      "resets": 0,
+      "mean_actual_height_m_after_2s": 0.3702367995182673,
+      "mean_actual_vx_mps_after_2s": 0.55066170891126
+    },
+    {
+      "gait": "rolling",
+      "height_m": 0.22,
+      "duration_s": 8.0,
+      "command": [
+        0.6,
+        0.0,
+        0.0,
+        0.22,
+        2.5,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "start_s": 56.0,
+      "end_s": 64.0,
+      "resets": 0,
+      "mean_actual_height_m_after_2s": 0.2876103698213895,
+      "mean_actual_vx_mps_after_2s": 0.5923807128270467
+    },
+    {
+      "gait": "rolling",
+      "height_m": 0.46,
+      "duration_s": 8.0,
+      "command": [
+        0.6,
+        0.0,
+        0.0,
+        0.46,
+        2.5,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "start_s": 64.0,
+      "end_s": 72.0,
+      "resets": 0,
+      "mean_actual_height_m_after_2s": 0.4101217302680016,
+      "mean_actual_vx_mps_after_2s": 0.5861630674203236
+    }
+  ],
+  "protocol": "Play config; no observation noise or domain randomization; neutral reset each segment; standard phase centers; normal terminations retained; no hidden warm-up or failed-attempt filtering."
+}
