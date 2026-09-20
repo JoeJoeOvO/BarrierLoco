@@ -1,0 +1,63 @@
+{
+  "task": "OmniBot-Go2W-Gait-Flat-MLP-v0",
+  "historical_task": "OmniBot-Go2W-MultiSkill-Flat-MLP-v0",
+  "source_host": "omnibot-remote",
+  "source_checkpoint": "/home/sshang/omnibot_data/workspaces/OmniBot-multi-skill-wtw-height50-rewardik-20260920/locolab/logs/rsl_rl/omnibot_go2w_multi_skill_flat_mlp_v0/2026-09-20_01-10-58_multi_skill_wtw_height50_rewardik_phase5_rollclock0_4096_remote_gpu4_5k_video/model_4999.pt",
+  "source_config_sha256": {
+    "model_4999.pt": "8aae903231657f76605fc87b59e1a9f7d802fec02f697d023f128378ccdf3c3e",
+    "params/agent.yaml": "f8dff171dc1159d7795fa4eff419c8afd18db281acf10f574e3f8a191c86bf48",
+    "params/env.yaml": "004ab608419c1d9f76217d22eef3cb951a72589eba8be3370c5601d303567874"
+  },
+  "iteration": 4999,
+  "training_iterations": 5000,
+  "actor_observations": 64,
+  "critic_observations": 318,
+  "actions": 16,
+  "actor_hidden_dims": [
+    512,
+    256,
+    128
+  ],
+  "activation": "elu",
+  "deterministic_mean_actions": true,
+  "observation_normalization": false,
+  "onnx_interface": {
+    "input": "obs",
+    "input_shape": [
+      1,
+      64
+    ],
+    "output": "actions",
+    "output_shape": [
+      1,
+      16
+    ]
+  },
+  "exporter": {
+    "implementation": "isaaclab_rl/rsl_rl/exporter.py",
+    "sha256": "d8e44dc5fda3fb6b135a7cf56c76338678103aac314851d59ad5399975a00e04"
+  },
+  "versions": {
+    "torch": "2.7.0+cu128",
+    "onnx": "1.19.0",
+    "onnxruntime": "1.23.1"
+  },
+  "validation": {
+    "samples": 385,
+    "seed": 42,
+    "max_absolute_error": {
+      "torchscript": 0.0,
+      "onnx": 6.103515625e-05
+    },
+    "rtol": 1e-05,
+    "atol": 0.0001
+  },
+  "validation_scope": "CPU numerical equivalence; no new simulator or real-robot evaluation",
+  "files_sha256": {
+    "model_4999.pt": "8aae903231657f76605fc87b59e1a9f7d802fec02f697d023f128378ccdf3c3e",
+    "policy.pt": "890d83ae52d60fb3e40a7444db86ed66c8f84dd36c94e001c704f9c50b5feac2",
+    "policy.onnx": "fbc8f2041b32f097903f4e81f4a85bc2929c87422769196232d324ff65a11fe1",
+    "params/agent.yaml": "f8dff171dc1159d7795fa4eff419c8afd18db281acf10f574e3f8a191c86bf48",
+    "params/env.yaml.gz": "9f29a75d56e0c32a20640474a7864dff7c062437874fae5ebfa3b5d5ed609282"
+  }
+}

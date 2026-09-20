@@ -77,6 +77,7 @@
 服务器 GPU 4，4096 环境，从零训练 5000 次，最终模型 `model_4999.pt`；W&B 和训练视频已启用。
 
 - [最新 W&B](https://wandb.ai/ssh45441-xi-an-jiaotong-university-/omnibot-go2w/runs/nhfgmyxj)
+- [最终 checkpoint、ONNX / TorchScript 网络与使用说明](../deploy/policy/go2w/gait_wtw_height50_20260920/README.md)
 - [最新 72 秒回放及完整数据](../artifacts/go2w_multi_skill/20260920_height50_showcase/README.md)
 - [此前高度权重 -10 的对比回放](../artifacts/go2w_multi_skill/20260919_phase5_showcase/README.md)
 - [保留产物与清理记录](../artifacts/go2w_multi_skill/README.md)
