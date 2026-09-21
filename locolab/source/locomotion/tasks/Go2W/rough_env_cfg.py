@@ -8,7 +8,6 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import RayCasterCfg, patterns
 from isaaclab.utils import configclass
-from isaaclab_tasks.manager_based.locomotion.velocity.mdp.rewards import stand_still_joint_deviation_l1
 
 from locolab.source.locomotion import mdp
 from locolab.source.locomotion.mdp.m20 import rewards as m20_rewards
@@ -172,6 +171,11 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
         weight=1.5,
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
+    penalize_ang_vel_z = RewTerm(
+        func=mdp.penalize_ang_vel_z,
+        weight=-1.0,
+        params={"command_name": "base_velocity"},
+    )
     velocity_slack = RewTerm(
         func=mdp.velocity_slack,
         weight=0.25,
@@ -218,21 +222,28 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
         params={"command_name": "base_velocity"},
     )
     stand_still = RewTerm(
-        func=stand_still_joint_deviation_l1,
+        func=mdp.stand_still_joint_deviation_se2,
         weight=-1.0,
         params={
             "command_name": "base_velocity",
-            # Preserve M20's planar-only gate, including pure yaw commands.
+            # Apply only to near-zero translation and yaw commands.
             "command_threshold": 0.06,
+            "angular_command_threshold": 0.06,
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
         },
     )
 
     # -- posture regularization
     hip_joint_pos_penalty = RewTerm(
-        func=m20_rewards.joint_pos_penalty,
+        func=m20_rewards.joint_pos_penalty_relax_side_cmd,
         weight=-1.5,
-        params={"command_name": "base_velocity", "asset_cfg": SceneEntityCfg("robot", joint_names=".*_hip_joint")},
+        params={
+            "command_name": "base_velocity",
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*_hip_joint"),
+            "side_scale": 0.5,
+            "y_cmd_threshold": 0.1,
+            "xz_norm_max": 0.1,
+        },
     )
     thigh_joint_pos_penalty = RewTerm(
         func=m20_rewards.joint_pos_penalty_local_terrain,
@@ -273,10 +284,13 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
         },
     )
     joint_mirror = RewTerm(
-        func=m20_rewards.joint_mirror_unscaled,
+        func=m20_rewards.joint_mirror_except_side_cmd,
         weight=-0.03,
         params={
             "asset_cfg": SceneEntityCfg("robot"),
+            "command_name": "base_velocity",
+            "y_cmd_threshold": 0.1,
+            "xz_norm_max": 0.1,
             "mirror_joints": [
                 ["FL_(hip|thigh|calf)_joint", "RR_(hip|thigh|calf)_joint"],
                 ["FR_(hip|thigh|calf)_joint", "RL_(hip|thigh|calf)_joint"],
@@ -284,7 +298,7 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
         },
     )
     rotation_gait_status = RewTerm(
-        func=m20_rewards.rotation_gait_status_unscaled,
+        func=m20_rewards.rotation_gait_status_per_wheel,
         weight=2.0,
         params={
             "command_name": "base_velocity",
@@ -294,14 +308,54 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
             "asset_cfg": SceneEntityCfg(
                 "robot", body_names=["FL_foot", "RR_foot", "FR_foot", "RL_foot"], preserve_order=True
             ),
-            "target_height": 0.05,
+            "terrain_sensor_cfg": SceneEntityCfg("height_scanner"),
+            "height_difference_std": 0.05,
+            "wheel_radius": 0.086,
+            "wheel_width": 0.045,
+            "wheel_center_offsets": (0.048, -0.048, -0.048, 0.048),
+            "max_ray_distance": 0.15,
             "lin_vel_threshold": 0.5,
             "ang_vel_threshold": 0.05,
         },
     )
     feet_air_time_ang_z_M20 = None
-    feet_slide_ang_z_cmd = None
-    rotation_gait_symmetry = None
+    feet_slide_ang_z_cmd = RewTerm(
+        func=m20_rewards.feet_slide_ang_z_cmd_unscaled,
+        weight=-2.0,
+        params={
+            "command_name": "base_velocity",
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
+            "cmd_lin_threshold": 0.1,
+            "cmd_ang_threshold": 0.1,
+        },
+    )
+    rotation_gait_symmetry = RewTerm(
+        func=m20_rewards.RotationGaitPerWheelDuty,
+        weight=5.0,
+        params={
+            "command_name": "base_velocity",
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces", body_names=["FL_foot", "RR_foot", "FR_foot", "RL_foot"], preserve_order=True
+            ),
+            "target_duty": 0.5,
+            "std": 0.2,
+            "swing_time_std": 0.1,
+            "lin_vel_threshold": 0.5,
+            "ang_vel_threshold": 0.05,
+        },
+    )
+    wheel_air_time_excess = RewTerm(
+        func=mdp.wheel_air_time_excess,
+        weight=-10.0,
+        params={
+            "command_name": "base_velocity",
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "max_air_time": 0.3,
+            "lin_vel_threshold": 0.5,
+            "ang_vel_threshold": 0.05,
+        },
+    )
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
