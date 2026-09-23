@@ -11,7 +11,6 @@ import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-HIGH_PLATFORM_CFG = ROOT / "locolab/source/locomotion/tasks/Go2W/high_platform_env_cfg.py"
 EVENTS = ROOT / "locolab/source/locomotion/mdp/events.py"
 GRID_PLANE = ROOT / "locolab/source/locomotion/terrains/grid_plane.py"
 
@@ -26,41 +25,18 @@ class _WheelResistanceBase:
     pass
 
 
-def _load_configured_wheel_resistance_term():
-    """Load the configured implementation without importing the Isaac runtime."""
-    high_platform_tree = ast.parse(HIGH_PLATFORM_CFG.read_text())
-    events_cfg = next(
-        node
-        for node in high_platform_tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "Go2WHighPlatformEventsCfg"
+def _load_wheel_resistance_term():
+    """Keep testing the shared event even though HighPlatform no longer enables it."""
+    events_tree = ast.parse(EVENTS.read_text())
+    term_node = next(
+        node for node in events_tree.body if isinstance(node, ast.ClassDef) and node.name == "wheel_resistance_xy"
     )
-    wheel_resistance = next(
-        node
-        for node in events_cfg.body
-        if isinstance(node, ast.Assign)
-        and isinstance(node.targets[0], ast.Name)
-        and node.targets[0].id == "wheel_resistance"
-    )
-    configured_func = next(keyword.value for keyword in wheel_resistance.value.keywords if keyword.arg == "func")
-    if isinstance(configured_func, ast.Name):
-        term_node = next(
-            node
-            for node in high_platform_tree.body
-            if isinstance(node, ast.ClassDef) and node.name == configured_func.id
-        )
-    else:
-        assert isinstance(configured_func, ast.Attribute) and configured_func.attr == "wheel_resistance_xy"
-        events_tree = ast.parse(EVENTS.read_text())
-        term_node = next(
-            node for node in events_tree.body if isinstance(node, ast.ClassDef) and node.name == "wheel_resistance_xy"
-        )
 
     module = ast.Module(body=[term_node], type_ignores=[])
     ast.fix_missing_locations(module)
     namespace = {
         "torch": torch,
         "math_utils": SimpleNamespace(quat_apply_inverse=lambda _quat, vector: vector),
-        "mdp": SimpleNamespace(wheel_resistance_xy=_WheelResistanceBase),
         "ManagerTermBase": _WheelResistanceBase,
         "EventTermCfg": object,
         "ManagerBasedEnv": object,
@@ -69,7 +45,7 @@ def _load_configured_wheel_resistance_term():
         "Articulation": object,
         "ContactSensor": object,
     }
-    exec(compile(module, str(HIGH_PLATFORM_CFG), "exec"), namespace)
+    exec(compile(module, str(EVENTS), "exec"), namespace)
     return namespace[term_node.name]
 
 
@@ -135,8 +111,8 @@ def _load_grid_plane_module(simulation_context):
     return module
 
 
-def test_high_platform_wheel_resistance_honors_partial_env_ids() -> None:
-    term_type = _load_configured_wheel_resistance_term()
+def test_wheel_resistance_honors_partial_env_ids() -> None:
+    term_type = _load_wheel_resistance_term()
     term = term_type.__new__(term_type)
     term.device = "cpu"
     term.linear_resistance = torch.zeros(4)
@@ -190,7 +166,7 @@ def test_high_platform_wheel_resistance_honors_partial_env_ids() -> None:
 
 
 def test_wheel_resistance_does_not_disable_an_existing_external_wrench() -> None:
-    term_type = _load_configured_wheel_resistance_term()
+    term_type = _load_wheel_resistance_term()
     term = term_type.__new__(term_type)
     term.device = "cpu"
     term.linear_resistance = torch.zeros(1)

@@ -83,6 +83,9 @@ python scripts/locomotion/train.py --task=OmniBot-Go2W-Rough-v0 --num_envs=4096 
 `OmniBot-Go2W-Rough-Rnn-v0` 和 `OmniBot-Go2W-Rough-DreamWaQ-v0`。
 整套 M20 配方仍未注册；当前范围与验证方法见[逐项迁移方案](../docs/m20_incremental_migration.md)。
 
+Go2W 高台技能继承当前 Rough MLP 配置，仅增加 `feet_stumble`，从 Rough checkpoint 续训。
+10–80cm 课程、最终网络和固定高度评测见[高台技能说明](../docs/go2w_highplatform_overview.md)。
+
 ### 推理/测试
 
 ```bash
@@ -118,6 +121,7 @@ python scripts/locomotion/play.py --task=OmniBot-Go2W-Flat-v0 --video
 |---------|------|
 | `OmniBot-Go2W-Flat-v0` | Go2W 轮足机器人平地速度控制 |
 | `OmniBot-Go2W-Rough-v0` | Go2W 轮足机器人复杂地形速度控制 |
+| `OmniBot-Go2W-HighPlatform-MLP-v0` | 10–80cm 高台课程；Play 为 30–80cm 六高台、台间距 1.5m |
 | `OmniBot-Go2W-Velocity` | 旧版别名，等同于 Flat-v0 |
 
 ## Go2W 轮足机器人

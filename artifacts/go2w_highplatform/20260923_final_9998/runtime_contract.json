@@ -1,0 +1,203 @@
+{
+  "step_dt": 0.02,
+  "joint_names": [
+    "FL_hip_joint",
+    "FR_hip_joint",
+    "RL_hip_joint",
+    "RR_hip_joint",
+    "FL_thigh_joint",
+    "FR_thigh_joint",
+    "RL_thigh_joint",
+    "RR_thigh_joint",
+    "FL_calf_joint",
+    "FR_calf_joint",
+    "RL_calf_joint",
+    "RR_calf_joint",
+    "FL_foot_joint",
+    "FR_foot_joint",
+    "RL_foot_joint",
+    "RR_foot_joint"
+  ],
+  "wheel_names": [
+    "FL_foot",
+    "FR_foot",
+    "RL_foot",
+    "RR_foot"
+  ],
+  "default_joint_pos": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.800000011920929,
+    0.800000011920929,
+    0.800000011920929,
+    0.800000011920929,
+    -1.5,
+    -1.5,
+    -1.5,
+    -1.5,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "stiffness": [
+    40.0,
+    40.0,
+    40.0,
+    40.0,
+    40.0,
+    40.0,
+    40.0,
+    40.0,
+    40.0,
+    40.0,
+    40.0,
+    40.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "damping": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.5,
+    0.5,
+    0.5,
+    0.5
+  ],
+  "actions": {
+    "joint_pos": {
+      "joint_names": [
+        "FL_hip_joint",
+        "FR_hip_joint",
+        "RL_hip_joint",
+        "RR_hip_joint",
+        "FL_thigh_joint",
+        "FR_thigh_joint",
+        "RL_thigh_joint",
+        "RR_thigh_joint",
+        "FL_calf_joint",
+        "FR_calf_joint",
+        "RL_calf_joint",
+        "RR_calf_joint"
+      ],
+      "scale": 0.25
+    },
+    "joint_vel": {
+      "joint_names": [
+        "FL_foot_joint",
+        "FR_foot_joint",
+        "RL_foot_joint",
+        "RR_foot_joint"
+      ],
+      "scale": 10.0
+    }
+  },
+  "observations": {
+    "policy": {
+      "terms": [
+        "base_ang_vel",
+        "projected_gravity",
+        "velocity_commands",
+        "joint_pos",
+        "joint_vel",
+        "last_action"
+      ],
+      "dims": [
+        [
+          3
+        ],
+        [
+          3
+        ],
+        [
+          3
+        ],
+        [
+          12
+        ],
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "critic": {
+      "terms": [
+        "base_lin_vel",
+        "base_ang_vel",
+        "projected_gravity",
+        "velocity_commands",
+        "joint_pos",
+        "joint_vel",
+        "last_action",
+        "joint_effort",
+        "joint_acc",
+        "height_scanner",
+        "terrain_height_stats",
+        "feet_lin_vel",
+        "feet_contact_force",
+        "wheel_contact_state"
+      ],
+      "dims": [
+        [
+          3
+        ],
+        [
+          3
+        ],
+        [
+          3
+        ],
+        [
+          3
+        ],
+        [
+          12
+        ],
+        [
+          16
+        ],
+        [
+          16
+        ],
+        [
+          16
+        ],
+        [
+          16
+        ],
+        [
+          187
+        ],
+        [
+          4
+        ],
+        [
+          12
+        ],
+        [
+          12
+        ],
+        [
+          4
+        ]
+      ]
+    }
+  }
+}
