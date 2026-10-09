@@ -55,6 +55,7 @@ parser.add_argument(
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument("--jump_stage", choices=("skill", "speed"), help="Use the matching Go2W Jump stage semantics.")
 parser.add_argument(
     "--use_pretrained_checkpoint",
     action="store_true",
@@ -66,6 +67,8 @@ cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
+if args_cli.jump_stage and args_cli.task != "OmniBot-Go2W-Jump-MLP-v0":
+    parser.error("jump_stage requires OmniBot-Go2W-Jump-MLP-v0")
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
@@ -105,6 +108,13 @@ def main():
         entry_point_key="play_env_cfg_entry_point",
     )
     agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
+    if args_cli.jump_stage:
+        from locolab.source.locomotion.tasks.Go2W.jump_env_cfg import apply_jump_training_stage
+
+        play_speed = env_cfg.commands.base_velocity.ranges.lin_vel_x
+        apply_jump_training_stage(env_cfg, args_cli.jump_stage)
+        env_cfg.commands.base_velocity.ranges.lin_vel_x = play_speed
+        env_cfg.events.reset_base.params["jump_probability"] = 0.0
     if args_cli.video:
         if args_cli.video_terrain:
             index = configure_terrain_view(env_cfg, args_cli.video_terrain)

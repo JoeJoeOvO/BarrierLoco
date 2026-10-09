@@ -94,13 +94,14 @@ def reset_timed_jump_or_flat_state(
     joint_velocity_range: tuple[float, float],
     phase_time_range: tuple[float, float],
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    align_reference_height: bool = False,
+    preserve_reference_joint_positions: bool = False,
 ) -> None:
     """Sample one episode-level jump flag, then reset to jump phase or flat state.
 
     Non-jump environments reproduce the original flat reset.  Jump environments
-    draw a stratified phase from the bundled 20 cm motion so every sufficiently
-    large reset batch covers preparation, flight, and landing/recovery.  The
-    motion supplies reset states and timing only; rewards need not track it.
+    draw a stratified phase from the selected motion so every sufficiently
+    large reset batch covers preparation, flight, and landing/recovery.
     """
     if not 0.0 <= jump_probability <= 1.0:
         raise ValueError(f"jump_probability must be in [0, 1], got {jump_probability}.")
@@ -113,8 +114,13 @@ def reset_timed_jump_or_flat_state(
     dtype = asset.data.default_root_state.dtype
     trajectory = load_jump_reference(reference_path, device=asset.device, dtype=dtype)
     phase_lower, phase_upper = phase_time_range
-    if phase_lower < 0.0 or phase_upper < phase_lower or phase_upper > trajectory.duration:
+    # Config floats and float32 reference tensors may round the same endpoint
+    # differently (e.g. 1.4 vs 1.399999976). Permit only numerical roundoff.
+    duration_tolerance = 4 * torch.finfo(dtype).eps * max(1.0, trajectory.duration)
+    if phase_lower < 0.0 or phase_upper < phase_lower or phase_upper > trajectory.duration + duration_tolerance:
         raise ValueError(f"phase_time_range must lie in [0, {trajectory.duration}], got {phase_time_range}.")
+    phase_lower = min(phase_lower, trajectory.duration)
+    phase_upper = min(phase_upper, trajectory.duration)
 
     # Begin with the exact flat-task reset semantics for every environment.
     default_root_state = asset.data.default_root_state[env_ids].clone()
@@ -147,12 +153,22 @@ def reset_timed_jump_or_flat_state(
 
     if jump_ids.numel() > 0:
         sample = trajectory.sample(phase_time[jump_ids])
+        if align_reference_height:
+            # Full-state references must place the sampled joints at their
+            # physical ground-relative height, not add the default standing z.
+            height = (
+                env.scene.env_origins[env_ids[jump_ids], 2] + trajectory.base_position[0, 2] + pose_samples[jump_ids, 2]
+            )
+            trigger_position[jump_ids, 2] = height
+            root_position[jump_ids, 2] = height
         zero_angle = torch.zeros(jump_ids.numel(), device=asset.device, dtype=dtype)
         yaw_quat = math_utils.quat_from_euler_xyz(zero_angle, zero_angle, pose_samples[jump_ids, 5])
         displacement = sample.base_position - trajectory.base_position[0]
         root_position[jump_ids] += math_utils.quat_apply(yaw_quat, displacement)
 
         pitch_quat = math_utils.quat_from_euler_xyz(zero_angle, sample.base_pitch, zero_angle)
+        if getattr(sample, "base_orientation", None) is not None:
+            pitch_quat = sample.base_orientation
         root_orientation[jump_ids] = math_utils.quat_mul(root_orientation[jump_ids], pitch_quat)
         root_velocity[jump_ids, :3] = math_utils.quat_apply(yaw_quat, sample.base_linear_velocity)
         reference_angular_velocity = torch.stack(
@@ -163,6 +179,8 @@ def reset_timed_jump_or_flat_state(
             ),
             dim=-1,
         )
+        if getattr(sample, "base_angular_velocity_world", None) is not None:
+            reference_angular_velocity = sample.base_angular_velocity_world
         root_velocity[jump_ids, 3:] = math_utils.quat_apply(yaw_quat, reference_angular_velocity)
 
         leg_joint_ids = _resolve_leg_joint_ids(
@@ -170,10 +188,28 @@ def reset_timed_jump_or_flat_state(
         )
         joint_position[jump_ids[:, None], leg_joint_ids] = sample.joint_position
         joint_velocity[jump_ids[:, None], leg_joint_ids] = sample.joint_velocity
+        if getattr(sample, "wheel_velocity", None) is not None:
+            wheel_names = list(trajectory.metadata["wheel_joint_names"])
+            wheel_joint_ids = asset.find_joints(wheel_names, preserve_order=True)[0]
+            if len(wheel_joint_ids) != 4:
+                raise ValueError("Wheel reference must resolve exactly four joints")
+            joint_position[jump_ids[:, None], wheel_joint_ids] = sample.wheel_position
+            joint_velocity[jump_ids[:, None], wheel_joint_ids] = sample.wheel_velocity
 
-    joint_position_limits = asset.data.soft_joint_pos_limits[env_ids]
+    joint_position_limits = asset.data.soft_joint_pos_limits[env_ids].clone()
+    if preserve_reference_joint_positions and jump_ids.numel() > 0:
+        # Keep physically validated reference states intact inside the true
+        # articulation limits. Ordinary flat resets retain their soft limits.
+        joint_position_limits[jump_ids] = asset.data.joint_pos_limits[env_ids[jump_ids]]
     joint_position.clamp_(joint_position_limits[..., 0], joint_position_limits[..., 1])
     joint_velocity_limits = asset.data.soft_joint_vel_limits[env_ids]
+    # Isaac Lab fills actuator soft velocity limits on the first control
+    # application; before then the buffer is zero, not a zero-speed constraint.
+    physical_velocity_limits = getattr(asset.data, "joint_vel_limits", None)
+    if physical_velocity_limits is not None:
+        joint_velocity_limits = torch.where(
+            joint_velocity_limits > 0, joint_velocity_limits, physical_velocity_limits[env_ids]
+        )
     joint_velocity.clamp_(-joint_velocity_limits, joint_velocity_limits)
 
     asset.write_root_pose_to_sim(torch.cat((root_position, root_orientation), dim=-1), env_ids=env_ids)

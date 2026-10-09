@@ -20,6 +20,8 @@ class GridPlaneTerrainImporter(TerrainImporter):
     avoids that asynchronous load for large rendered clone grids.
     """
 
+    border_margin: float = 0.0
+
     def __init__(self, cfg: TerrainImporterCfg):
         if sim_utils.SimulationContext.instance() is None:
             raise RuntimeError("GridPlaneTerrainImporter requires an active SimulationContext.")
@@ -35,5 +37,14 @@ class GridPlaneTerrainImporter(TerrainImporter):
 
         num_rows = math.ceil(self.cfg.num_envs / int(math.sqrt(self.cfg.num_envs)))
         num_cols = math.ceil(self.cfg.num_envs / num_rows)
-        mesh_size = (num_rows * self.cfg.env_spacing, num_cols * self.cfg.env_spacing)
+        mesh_size = (
+            num_rows * self.cfg.env_spacing + 2 * self.border_margin,
+            num_cols * self.cfg.env_spacing + 2 * self.border_margin,
+        )
         self.import_mesh(name, make_plane(mesh_size, height=0.0))
+
+
+class MovingJumpPlaneTerrainImporter(GridPlaneTerrainImporter):
+    """Room for 10 s at a 1.5 m/s command, plus reset noise and speed overshoot."""
+
+    border_margin: float = 20.0

@@ -113,13 +113,7 @@ class Go2WM20SceneCfg(Go2WSceneCfg):
         self.terrain.physics_material.restitution = 1.0
         self.height_scanner.mesh_prim_paths = ["/World/ground/terrain"]
         self.contact_forces.history_length = 3
-        # Match the calf velocity limit in the Go2W URDF/USD. Keep the existing
-        # deployment torque cap and all kp/kd/action/PPO parameters unchanged.
-        self.robot.actuators["legs"].velocity_limit_sim = {
-            ".*_hip_joint": 30.0,
-            ".*_thigh_joint": 30.0,
-            ".*_calf_joint": 20.07,
-        }
+        # Inherit per-joint official-model effort/velocity limits from GO2W_CFG.
 
 
 @configclass

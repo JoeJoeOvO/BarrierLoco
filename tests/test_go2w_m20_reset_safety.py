@@ -245,7 +245,7 @@ def test_mass_coupled_inertia_preserves_mass_ratio_and_never_compounds(implement
     assert torch.linalg.eigvalsh(view.inertia.reshape(n, b, 3, 3)).min() > 0
 
 
-def test_calf_speed_override_matches_urdf_without_changing_torque_or_gains():
+def test_m20_inherits_corrected_common_limits_without_changing_gains():
     cfg = ROOT / "locolab/source/locomotion/tasks/Go2W/m20_env_cfg.py"
     tree = ast.parse(cfg.read_text())
     scene = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Go2WM20SceneCfg")
@@ -255,9 +255,23 @@ def test_calf_speed_override_matches_urdf_without_changing_torque_or_gains():
         if isinstance(node, ast.Assign)
         for target in node.targets
     }
-    limits = ast.literal_eval(assignments["self.robot.actuators['legs'].velocity_limit_sim"])
+    assert not any(
+        key.endswith(("stiffness", "damping", "effort_limit_sim", "velocity_limit_sim")) for key in assignments
+    )
+    shared = ast.parse((ROOT / "locolab/source/locomotion/assets/robot.py").read_text())
+    actuators = next(
+        node.value for node in ast.walk(shared) if isinstance(node, ast.keyword) and node.arg == "actuators"
+    )
+    legs = next(value for key, value in zip(actuators.keys, actuators.values) if key.value == "legs")
+    settings = {item.arg: item.value for item in legs.keywords}
+    limits = ast.literal_eval(settings["velocity_limit_sim"])
+    effort = ast.literal_eval(settings["effort_limit_sim"])
+    assert limits == {".*_hip_joint": 30.0, ".*_thigh_joint": 30.0, ".*_calf_joint": 20.0}
+    assert effort[".*_calf_joint"] == 35.0
+    assert ast.literal_eval(settings["stiffness"]) == 40.0
+    assert ast.literal_eval(settings["damping"]) == 1.0
     model = ET.parse(URDF).getroot()
     for joint in model.findall("joint"):
         if "_calf_" in joint.get("name"):
-            assert limits[".*_calf_joint"] == float(joint.find("limit").get("velocity"))
-    assert not any(key.endswith(("stiffness", "damping", "effort_limit_sim")) for key in assignments)
+            assert limits[".*_calf_joint"] <= float(joint.find("limit").get("velocity"))
+            assert effort[".*_calf_joint"] <= float(joint.find("limit").get("effort"))

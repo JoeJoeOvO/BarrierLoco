@@ -63,6 +63,15 @@ parser.add_argument("--task", type=str, default=None, choices=tasks, help="Name 
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
 parser.add_argument(
+    "--jump_stage", choices=("skill", "speed"), help="Go2W Jump: scratch skill stage or resumed speed stage."
+)
+parser.add_argument(
+    "--warm_start_rough",
+    type=str,
+    default=None,
+    help="Go2W Jump MLP: initialize actor from Rough MLP; reset critic/optimizer.",
+)
+parser.add_argument(
     "--smoke-marker",
     action="store_true",
     help="Print a machine-checkable marker only after a smoke training run completes.",
@@ -76,6 +85,17 @@ cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 argcomplete.autocomplete(parser)
 args_cli, hydra_args = parser.parse_known_args()
+if args_cli.jump_stage and args_cli.task != "OmniBot-Go2W-Jump-MLP-v0":
+    parser.error("jump_stage requires OmniBot-Go2W-Jump-MLP-v0")
+if args_cli.jump_stage == "skill" and (args_cli.resume or args_cli.warm_start_rough):
+    parser.error("The skill stage starts from random weights, not resume or Rough warm start")
+if args_cli.jump_stage == "speed" and not args_cli.resume:
+    parser.error("The speed stage must resume the completed skill-stage checkpoint")
+if args_cli.warm_start_rough:
+    if args_cli.resume or args_cli.task != "OmniBot-Go2W-Jump-MLP-v0":
+        parser.error("--warm_start_rough is only valid for Go2W Jump MLP and cannot be combined with --resume.")
+    if not pathlib.Path(args_cli.warm_start_rough).expanduser().is_file():
+        parser.error("--warm_start_rough checkpoint does not exist.")
 
 # Only rank zero owns rendering, videos, and shared run artifacts.
 is_primary = not args_cli.distributed or int(os.environ.get("RANK", "0")) == 0
@@ -152,6 +172,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     """Train with RSL-RL agent."""
     # override configurations with non-hydra CLI arguments
     agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
+    if args_cli.jump_stage:
+        from locolab.source.locomotion.tasks.Go2W.jump_env_cfg import apply_jump_training_stage
+
+        apply_jump_training_stage(env_cfg, args_cli.jump_stage)
+    if args_cli.warm_start_rough and (agent_cfg.resume or agent_cfg.algorithm.class_name != "PPO"):
+        raise ValueError("Rough warm start requires fresh PPO optimizer state, not resume/distillation.")
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     agent_cfg.max_iterations = (
         args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg.max_iterations
@@ -255,6 +281,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # write git state to logs
     runner.add_git_repo_to_log(__file__)
     # load the checkpoint
+    if args_cli.warm_start_rough:
+        from rsl_rl.utils.rough_mlp_warm_start import warm_start_rough_mlp
+
+        command_name = "jump_trigger"
+        report = warm_start_rough_mlp(runner.alg.policy, args_cli.warm_start_rough, command_name=command_name)
+        print(f"[INFO] Rough actor warm start: {report}")
+        if is_primary:
+            dump_yaml(os.path.join(log_dir, "params", "warm_start.yaml"), report)
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model

@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
+import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,6 +76,8 @@ class _Robot:
     def find_joints(self, names, preserve_order=False):
         assert preserve_order
         self.find_joints_calls += 1
+        if len(names) == 4 and all(name.endswith("_foot_joint") for name in names):
+            return list(range(12, 16)), list(names)
         return list(range(12)), list(names)
 
     def write_root_pose_to_sim(self, value, env_ids):
@@ -123,7 +126,15 @@ def _make_env(num_envs: int = 8):
     return SimpleNamespace(num_envs=num_envs, device="cpu", scene=scene), robot
 
 
-def _reset(events, env, env_ids, probability):
+def _reset(
+    events,
+    env,
+    env_ids,
+    probability,
+    phase_time_range=(0.0, 0.8),
+    align_reference_height=False,
+    preserve_reference_joint_positions=False,
+):
     events.reset_timed_jump_or_flat_state(
         env,
         env_ids,
@@ -134,8 +145,10 @@ def _reset(events, env, env_ids, probability):
         velocity_range={},
         joint_position_range=(1.0, 1.0),
         joint_velocity_range=(0.0, 0.0),
-        phase_time_range=(0.0, 0.8),
+        phase_time_range=phase_time_range,
         asset_cfg=events.SceneEntityCfg("robot"),
+        align_reference_height=align_reference_height,
+        preserve_reference_joint_positions=preserve_reference_joint_positions,
     )
 
 
@@ -185,3 +198,109 @@ def test_timed_jump_buffer_validation_repairs_each_invalid_buffer(monkeypatch) -
     assert env._jump_trigger_position.dtype == torch.float32
     assert env._jump_target_height.dtype == torch.float32
     assert env._jump_reset_pending.dtype == torch.bool
+
+
+def test_reference_phase_endpoint_accepts_float32_roundoff_not_real_overrun(monkeypatch):
+    events = _load_jump_events(monkeypatch)
+    env, _ = _make_env()
+    trajectory = _Trajectory()
+    trajectory.duration = float(torch.tensor(1.4, dtype=torch.float32))
+    monkeypatch.setattr(events, "load_jump_reference", lambda *_args, **_kwargs: trajectory)
+    ids = torch.arange(env.num_envs)
+    _reset(events, env, ids, 1.0, phase_time_range=(0.0, 1.4))
+    assert (env._jump_initial_phase_time <= trajectory.duration).all()
+    _reset(events, env, ids, 1.0, phase_time_range=(1.4, 1.4))
+    assert env._jump_initial_phase_time.eq(trajectory.duration).all()
+    with pytest.raises(ValueError, match="phase_time_range"):
+        _reset(events, env, ids, 1.0, phase_time_range=(0.0, 1.401))
+
+
+def test_full_reference_reset_keeps_valid_physical_pose_without_changing_flat_limits(monkeypatch):
+    events = _load_jump_events(monkeypatch)
+    env, robot = _make_env()
+    robot.data.soft_joint_pos_limits[:] = torch.tensor([-0.8, 0.8])
+    robot.data.joint_pos_limits = torch.tensor([-1.2, 1.2]).expand(env.num_envs, 16, 2).clone()
+    robot.data.default_joint_pos[:] = 1.0
+    trajectory = _Trajectory()
+    monkeypatch.setattr(events, "load_jump_reference", lambda *args, **kwargs: trajectory)
+    ids = torch.arange(env.num_envs)
+    _reset(events, env, ids, 1.0, preserve_reference_joint_positions=True)
+    torch.testing.assert_close(robot.joint_position[:, :12], torch.ones(env.num_envs, 12))
+    _reset(events, env, ids, 0.0, preserve_reference_joint_positions=True)
+    torch.testing.assert_close(robot.joint_position, torch.full((env.num_envs, 16), 0.8))
+
+
+def test_forward_reset_height_matches_actual_reference_and_legacy_reset_is_unchanged(monkeypatch):
+    events = _load_jump_events(monkeypatch)
+    env, robot = _make_env()
+    env.scene.env_origins[:, 2] = 0.20
+    trajectory = _Trajectory()
+    trajectory.base_position[:, 2] = 0.36
+    original_sample = trajectory.sample
+
+    def sample(query):
+        result = original_sample(query)
+        result.base_position[:, 2] = 0.55
+        return result
+
+    trajectory.sample = sample
+    monkeypatch.setattr(events, "load_jump_reference", lambda *args, **kwargs: trajectory)
+    ids = torch.arange(env.num_envs)
+    _reset(events, env, ids, 1.0, align_reference_height=True)
+    torch.testing.assert_close(robot.root_pose[:, 2], torch.full((env.num_envs,), 0.75))
+    torch.testing.assert_close(env._jump_trigger_position[:, 2], torch.full((env.num_envs,), 0.56))
+    _reset(events, env, ids, 1.0)
+    torch.testing.assert_close(robot.root_pose[:, 2], torch.full((env.num_envs,), 0.81))
+
+
+@pytest.mark.parametrize("first_control_pending", [False, True])
+def test_reference_wheel_velocity_is_restored_but_flat_reset_stays_zero(monkeypatch, first_control_pending):
+    events = _load_jump_events(monkeypatch)
+    env, robot = _make_env()
+    if first_control_pending:
+        robot.data.soft_joint_vel_limits.zero_()
+        robot.data.joint_vel_limits = torch.full((env.num_envs, 16), 30.0)
+    trajectory = _Trajectory()
+    trajectory.metadata = {
+        **trajectory.metadata,
+        "wheel_joint_names": [p + "_foot_joint" for p in ("FR", "FL", "RR", "RL")],
+    }
+    original_sample = trajectory.sample
+
+    def sample(query):
+        result = original_sample(query)
+        result.wheel_position = torch.tensor([[4.0, 5.0, 6.0, 7.0]]).repeat(len(query), 1)
+        result.wheel_velocity = torch.tensor([[10.0, 11.0, 12.0, 13.0]]).repeat(len(query), 1)
+        return result
+
+    trajectory.sample = sample
+    monkeypatch.setattr(events, "load_jump_reference", lambda *args, **kwargs: trajectory)
+    ids = torch.arange(env.num_envs)
+    _reset(events, env, ids, 1.0)
+    torch.testing.assert_close(
+        robot.joint_velocity[:, 12:], torch.tensor([[10.0, 11.0, 12.0, 13.0]]).repeat(env.num_envs, 1)
+    )
+    _reset(events, env, ids, 0.0)
+    assert robot.joint_velocity[:, 12:].eq(0).all()
+
+
+def test_full_base_state_reset_restores_all_angular_axes(monkeypatch):
+    events = _load_jump_events(monkeypatch)
+    env, robot = _make_env()
+    trajectory = _Trajectory()
+    original_sample = trajectory.sample
+    quat = torch.tensor([[0.99, 0.01, 0.02, 0.03]])
+    quat = quat / torch.linalg.vector_norm(quat, dim=-1, keepdim=True)
+
+    def sample(query):
+        result = original_sample(query)
+        result.base_orientation = quat.repeat(len(query), 1)
+        result.base_angular_velocity_world = torch.tensor([[0.1, 0.2, 0.3]]).repeat(len(query), 1)
+        return result
+
+    trajectory.sample = sample
+    monkeypatch.setattr(events.math_utils, "quat_mul", lambda first, second: second)
+    monkeypatch.setattr(events, "load_jump_reference", lambda *args, **kwargs: trajectory)
+    _reset(events, env, torch.arange(env.num_envs), 1.0)
+    torch.testing.assert_close(robot.root_pose[:, 3:7], quat.repeat(env.num_envs, 1))
+    torch.testing.assert_close(robot.root_velocity[:, 3:], torch.tensor([[0.1, 0.2, 0.3]]).repeat(env.num_envs, 1))

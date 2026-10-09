@@ -28,10 +28,15 @@ def velocity_and_jump_commands(
     env: ManagerBasedEnv,
     velocity_command_name: str = "base_velocity",
     jump_command_name: str = "jump_command",
+    lock_jump_heading: bool = False,
 ) -> torch.Tensor:
-    """Return ``[lin_vel_x, lin_vel_y, ang_vel_z, jump_trigger]``."""
+    """Return four command columns; optionally resolve held heading into body XY."""
     velocity_command = env.command_manager.get_command(velocity_command_name)
     jump_command = env.command_manager.get_command(jump_command_name)
+    if lock_jump_heading:
+        term = env.command_manager.get_term(jump_command_name)
+        term.update_state()
+        velocity_command = term.heading_velocity_command(velocity_command)
     return torch.cat((velocity_command[:, :3], jump_command[:, :1]), dim=-1)
 
 

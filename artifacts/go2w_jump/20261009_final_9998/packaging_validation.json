@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-09",
+  "pytest": {
+    "command": "python -m pytest -q",
+    "passed": 172,
+    "skipped": 1,
+    "skip_reason": "Optional Python MuJoCo bindings are absent; native MuJoCo model test was run separately."
+  },
+  "pre_commit": {
+    "scope": "All added/modified files in this commit, excluding deleted files",
+    "result": "passed; no hooks skipped by override"
+  },
+  "network_export": {
+    "command": "CUDA_VISIBLE_DEVICES='' python deploy/policy/go2w/jump_smooth_mlp_20261009/export_policy.py --verify-only",
+    "device": "CPU",
+    "samples": 385,
+    "result": "passed",
+    "torchscript_max_absolute_error": 0.0,
+    "onnx_max_absolute_error": 0.000274658203125,
+    "onnx_unit_std_max_absolute_error": 0.000022411346435546875,
+    "rtol": 0.00001,
+    "atol": 0.0002
+  },
+  "native_mujoco_limits": {
+    "source": "tests/smoke_go2w_mujoco_limits.cpp",
+    "model": "deploy/src/robot_description/go2w_description/mjcf/go2w.xml",
+    "library_version": "3.2.7",
+    "actuators": 16,
+    "steps": 100,
+    "result": "GO2W_MUJOCO_LIMITS_OK",
+    "scope": "Compiled actuator limits, positive/negative force clipping, finite physics state; not policy deployment."
+  },
+  "no_new_training_or_hardware_execution": true
+}
