@@ -78,6 +78,14 @@ class Go2WGaitEnvCfg(Go2WFlatEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        # BarrierLoco velocity-range experiment; bundled weights were trained at +/-1 m/s.
+        # Only widen body-frame vx: keep vy/yaw, reward shaping and dynamics unchanged.
+        # This is uniform sampling, not a curriculum or a guarantee of achievable speed.
+        self.commands.base_velocity.lin_vel_x = (-5.0, 5.0)
+        # Preserve the bundled Gait checkpoint's training dynamics.
+        self.scene.robot.actuators["legs"].effort_limit_sim = 23.5
+        self.scene.robot.actuators["legs"].velocity_limit_sim = 30.0
+        self.scene.robot.spawn.articulation_props.enabled_self_collisions = False
         # 20 s episodes contain an in-episode command change at 10 s, as WTW.
         self.episode_length_s = 20.0
         # Flat's global velocity curriculum expects a UniformVelocityCommand;

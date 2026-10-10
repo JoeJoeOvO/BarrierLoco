@@ -8,6 +8,7 @@
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import math
 import pathlib
 import sys
 
@@ -62,11 +63,21 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument("--follow-camera", action="store_true", help="Track robot zero in the interactive viewport.")
+parser.add_argument("--velocity-sweep", action="store_true", help="Cycle Go2W gait / omnidirectional velocity cases.")
+parser.add_argument("--live-plot", action="store_true", help="Dock live velocity curves and values inside Isaac Sim.")
+parser.add_argument("--sweep-seconds", type=float, default=6.0, help="Simulation seconds per velocity case.")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
+if args_cli.velocity_sweep and args_cli.task != "OmniBot-Go2W-Gait-Flat-MLP-v0":
+    parser.error("--velocity-sweep requires the Go2W Gait task")
+if args_cli.sweep_seconds <= 0 or not math.isfinite(args_cli.sweep_seconds):
+    parser.error("--sweep-seconds must be positive and finite")
+if args_cli.live_plot and args_cli.headless:
+    parser.error("--live-plot requires a desktop window")
 if args_cli.jump_stage and args_cli.task != "OmniBot-Go2W-Jump-MLP-v0":
     parser.error("jump_stage requires OmniBot-Go2W-Jump-MLP-v0")
 # always enable cameras to record video
@@ -88,13 +99,20 @@ import torch
 from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper, export_policy_as_jit, export_policy_as_onnx
 from isaaclab_tasks.utils import get_checkpoint_path
 from rsl_rl.runners import OnPolicyRunner
 
 import locolab.source.locomotion.tasks  # noqa: F401
 from locolab.source.locomotion.utils.parser_cfg import parse_env_cfg
+
+try:
+    # Recent Isaac Lab versions keep RL checkpoint helpers in isaaclab_rl.
+    from isaaclab_rl.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
+except ModuleNotFoundError as exc:
+    if exc.name not in {"isaaclab_rl.utils", "isaaclab_rl.utils.pretrained_checkpoint"}:
+        raise
+    from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
 
 
 def main():
@@ -108,6 +126,13 @@ def main():
         entry_point_key="play_env_cfg_entry_point",
     )
     agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
+    if args_cli.velocity_sweep:
+        # A single robot makes curves unambiguous. Manual wz must not be overwritten
+        # by the random heading controller used during normal training.
+        env_cfg.scene.num_envs = 1
+        env_cfg.commands.base_velocity.heading_command = False
+    if args_cli.follow_camera:
+        configure_robot_follow_view(env_cfg.viewer)
     if args_cli.jump_stage:
         from locolab.source.locomotion.tasks.Go2W.jump_env_cfg import apply_jump_training_stage
 
@@ -211,17 +236,69 @@ def main():
     # reset environment
     obs = env.get_observations()
     timestep = 0
+    telemetry = None
+    velocity_panel = None
+    if args_cli.live_plot:
+        import csv
+        from datetime import datetime
+        from locolab.source.locomotion.utils.velocity_panel import VelocityPanel
+
+        telemetry_path = pathlib.Path(log_dir) / f"velocity_live_{datetime.now():%Y%m%d_%H%M%S}.csv"
+        telemetry = telemetry_path.open("w", buffering=1)
+        writer = csv.writer(telemetry)
+        writer.writerow(["time", "case", "cmd0", "cmd1", "cmd2", "actual0", "actual1", "actual2", "resets"])
+        telemetry.flush()
+        velocity_panel = VelocityPanel()
+        print(f"[INFO] Live velocity telemetry: {telemetry_path}", flush=True)
+    if args_cli.velocity_sweep:
+        from locolab.source.locomotion.mdp.wtw_math import PHASE_PRESETS
+        from locolab.source.locomotion.utils.gait_sweep import gait_command, velocity_cases
+
+        cases = velocity_cases()
+    previous_case = -1
+    reset_count = 0
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
         # run everything in inference mode
         with torch.inference_mode():
+            label = "random commands"
+            case_changed = False
+            if args_cli.velocity_sweep:
+                case_number = int(timestep * dt / args_cli.sweep_seconds)
+                gait, name, velocity = cases[case_number % len(cases)]
+                label = f"{case_number % len(cases) + 1}/{len(cases)} {gait}: {name}"
+                if case_number != previous_case:
+                    env.reset()
+                    case_changed = True
+                    previous_case = case_number
+                    print(f"[SWEEP] {label}", flush=True)
+                # Reset can resample commands; reapply before every policy inference.
+                env.unwrapped.command_manager.get_term("base_velocity").set_command(
+                    gait_command(gait, velocity, PHASE_PRESETS)
+                )
+                obs = env.get_observations()
+            cmd = env.unwrapped.command_manager.get_command("base_velocity")[0, :3].clone()
             # agent stepping
             actions = policy(obs)
             # env stepping
-            obs, _, _, _ = env.step(actions)
+            obs, _, dones, _ = env.step(actions)
+            if telemetry is not None:
+                reset = bool(dones[0].item())
+                reset_count += int(reset)
+                robot = env.unwrapped.scene["robot"]
+                actual = torch.cat((robot.data.root_lin_vel_b[0, :2], robot.data.root_ang_vel_b[0, 2:3]))
+                # Log the command used for this action, with post-step body-frame velocity.
+                # A terminal step has already auto-reset in the vector wrapper, so omit
+                # that measurement from CSV instead of presenting it as tracking success.
+                values = [float("nan")] * 3 if reset or case_changed else actual.tolist()
+                writer.writerow([timestep * dt, label, *cmd.tolist(), *values, reset_count])
+                velocity_panel.update(
+                    timestep * dt, label, cmd.tolist(), actual.tolist(), reset_count,
+                    clear=reset or case_changed,
+                )
+        timestep += 1
         if video_plan is not None:
-            timestep += 1
             # Exit the play loop after recording one video
             if timestep >= video_plan.simulation_steps:
                 break
@@ -233,6 +310,10 @@ def main():
 
     # close the simulator
     env.close()
+    if telemetry is not None:
+        telemetry.close()
+    if velocity_panel is not None:
+        velocity_panel.close()
 
 
 if __name__ == "__main__":
