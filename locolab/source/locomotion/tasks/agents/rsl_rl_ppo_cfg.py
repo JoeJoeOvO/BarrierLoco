@@ -228,7 +228,9 @@ class Go2WCrawlPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
 class Go2WRoughMLPPPORunnerCfg(BasePPORunnerCfg):
     def __post_init__(self) -> None:
         self.experiment_name = "omnibot_go2w_rough_mlp_v0"
+        self.policy.noise_std_type = "log"
         self.algorithm.learning_rate = 3.0e-4
+        self.algorithm.entropy_coef = 0.008
 
 
 @configclass
@@ -471,6 +473,7 @@ class Go2WRoughDreamWaQPPORunnerCfg(Go2WDreamWaQPPORunnerCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         self.experiment_name = "omnibot_go2w_rough_dreamwaq_v0"
+        self.algorithm.entropy_coef = 0.008
         self.policy.reconstruction_mask_indices = [6, 7, 8, *range(37, 53)]
 
 

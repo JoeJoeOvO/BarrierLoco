@@ -10,6 +10,7 @@ from isaaclab.sensors import RayCasterCfg, patterns
 from isaaclab.utils import configclass
 
 from locolab.source.locomotion import mdp
+from locolab.source.locomotion.mdp.m20 import rewards as m20_rewards
 from locolab.source.locomotion.tasks.velocity_env_cfg import (
     LocomotionCommandsCfg,
     LocomotionCurriculumCfg,
@@ -76,6 +77,16 @@ class Go2WRoughSceneCfg(Go2WSceneCfg):
         debug_vis=False,
         mesh_prim_paths=["/World/ground/terrain"],
     )
+    # Retained for diagnostics and the historical M20 recipe. Active posture
+    # relaxation uses height_scanner's footprint and directional preview instead.
+    height_scanner_base = RayCasterCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/base",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.05, size=(0.1, 0.1)),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground/terrain"],
+    )
 
     def __post_init__(self):
         super().__post_init__()
@@ -129,12 +140,9 @@ class Go2WRoughCommandsCfg(LocomotionCommandsCfg):
 
 @configclass
 class Go2WRoughCurriculumCfg(LocomotionCurriculumCfg):
-    """Terrain-only curriculum; velocity ranges remain fixed."""
+    """Keep distance-based terrain progression with fixed reward weights."""
 
-    terrain_levels = CurrTerm(
-        func=mdp.terrain_levels_reward,
-        params={"command_name": "base_velocity"},
-    )
+    terrain_levels = CurrTerm(func=mdp.terrain_levels_reward)
     lin_vel_cmd = None
     ang_vel_cmd = None
 
@@ -151,8 +159,28 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
     Independently defined from LocomotionRewardsCfg (not inherited from Go2WRewardsCfg).
     """
 
-    stay_alive = RewTerm(func=mdp.stay_alive_startup, weight=5.0)
+    stay_alive = None
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
+    track_lin_vel_xy = RewTerm(
+        func=mdp.track_lin_vel_xy_exp,
+        weight=3.0,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
+    )
+    track_ang_vel_z = RewTerm(
+        func=mdp.track_ang_vel_z_exp,
+        weight=1.5,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
+    )
+    penalize_ang_vel_z = RewTerm(
+        func=mdp.penalize_ang_vel_z,
+        weight=-1.0,
+        params={"command_name": "base_velocity"},
+    )
+    velocity_slack = RewTerm(
+        func=mdp.velocity_slack,
+        weight=0.25,
+        params={"command_name": "base_velocity", "min_ratio": 0.3, "max_ratio": 1.5, "command_threshold": 0.0},
+    )
     track_lin_vel_xy_enhance = RewTerm(
         func=mdp.track_lin_vel_xy_exp,
         weight=0.5,
@@ -163,14 +191,12 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
         weight=0.25,
         params={"command_name": "base_velocity", "std": math.sqrt(0.04)},
     )
-    base_height = RewTerm(
-        func=mdp.base_height_tolerance,
-        weight=-5.0,
-        params={
-            "target_height": 0.42,
-            "tolerance": 0.02,
-            "sensor_cfg": SceneEntityCfg("base_height_scanner"),
-        },
+    base_height = None
+    orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
+    torques = RewTerm(
+        func=mdp.joint_torques_l2,
+        weight=-5.0e-4,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
     # -- contact regularization
     collision = RewTerm(
@@ -181,12 +207,13 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_thigh", ".*_calf", "base"]),
         },
     )
-    feet_stumble = RewTerm(
-        func=mdp.feet_stumble,
-        weight=-0.1,
+    # M20's 100 N threshold scaled by nominal mass: 19.523 / 34.4914.
+    contact_forces = RewTerm(
+        func=mdp.contact_forces,
+        weight=-1.5e-4,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "ratio_threshold": 5.0,
+            "threshold": 56.6,
         },
     )
     penalize_lin_vel_xy = RewTerm(
@@ -195,25 +222,146 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
         params={"command_name": "base_velocity"},
     )
     stand_still = RewTerm(
-        func=mdp.stand_still,
-        weight=-0.5,
+        func=mdp.stand_still_joint_deviation_se2,
+        weight=-1.0,
         params={
             "command_name": "base_velocity",
+            # Apply only to near-zero translation and yaw commands.
+            "command_threshold": 0.06,
+            "angular_command_threshold": 0.06,
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
         },
     )
 
     # -- posture regularization
-    hip_default = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.25,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*"])},
+    hip_joint_pos_penalty = RewTerm(
+        func=m20_rewards.joint_pos_penalty_relax_side_cmd,
+        weight=-1.5,
+        params={
+            "command_name": "base_velocity",
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*_hip_joint"),
+            "side_scale": 0.5,
+            "y_cmd_threshold": 0.1,
+            "xz_norm_max": 0.1,
+        },
+    )
+    thigh_joint_pos_penalty = RewTerm(
+        func=m20_rewards.joint_pos_penalty_local_terrain,
+        weight=-1.0,
+        params={
+            "command_name": "base_velocity",
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*_thigh_joint"),
+            "sensor_cfg": SceneEntityCfg("height_scanner"),
+            "ang_cmd_threshold": 0.1,
+            "y_cmd_threshold": 0.1,
+            "xy_norm_max": 0.1,
+            "xz_norm_max": 0.1,
+            "terrain_height_threshold": 0.06,
+            "high_terrain_penalty_scale": 0.1,
+            "footprint_half_length": 0.3,
+            "footprint_half_width": 0.25,
+            "lookahead_distance": 0.5,
+            "min_valid_rays": 10,
+        },
+    )
+    calf_joint_pos_penalty = RewTerm(
+        func=m20_rewards.joint_pos_penalty_local_terrain,
+        weight=-0.5,
+        params={
+            "command_name": "base_velocity",
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*_calf_joint"),
+            "sensor_cfg": SceneEntityCfg("height_scanner"),
+            "ang_cmd_threshold": 0.1,
+            "y_cmd_threshold": 0.1,
+            "xy_norm_max": 0.1,
+            "xz_norm_max": 0.1,
+            "terrain_height_threshold": 0.06,
+            "high_terrain_penalty_scale": 0.1,
+            "footprint_half_length": 0.3,
+            "footprint_half_width": 0.25,
+            "lookahead_distance": 0.5,
+            "min_valid_rays": 10,
+        },
+    )
+    joint_mirror = RewTerm(
+        func=m20_rewards.joint_mirror_except_side_cmd,
+        weight=-0.03,
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "command_name": "base_velocity",
+            "y_cmd_threshold": 0.1,
+            "xz_norm_max": 0.1,
+            "mirror_joints": [
+                ["FL_(hip|thigh|calf)_joint", "RR_(hip|thigh|calf)_joint"],
+                ["FR_(hip|thigh|calf)_joint", "RL_(hip|thigh|calf)_joint"],
+            ],
+        },
+    )
+    rotation_gait_status = RewTerm(
+        func=m20_rewards.rotation_gait_status_per_wheel,
+        weight=2.0,
+        params={
+            "command_name": "base_velocity",
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces", body_names=["FL_foot", "RR_foot", "FR_foot", "RL_foot"], preserve_order=True
+            ),
+            "asset_cfg": SceneEntityCfg(
+                "robot", body_names=["FL_foot", "RR_foot", "FR_foot", "RL_foot"], preserve_order=True
+            ),
+            "terrain_sensor_cfg": SceneEntityCfg("height_scanner"),
+            "height_difference_std": 0.05,
+            "wheel_radius": 0.086,
+            "wheel_width": 0.045,
+            "wheel_center_offsets": (0.048, -0.048, -0.048, 0.048),
+            "max_ray_distance": 0.15,
+            "lin_vel_threshold": 0.5,
+            "ang_vel_threshold": 0.05,
+        },
+    )
+    feet_air_time_ang_z_M20 = None
+    feet_slide_ang_z_cmd = RewTerm(
+        func=m20_rewards.feet_slide_ang_z_cmd_unscaled,
+        weight=-2.0,
+        params={
+            "command_name": "base_velocity",
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
+            "cmd_lin_threshold": 0.1,
+            "cmd_ang_threshold": 0.1,
+        },
+    )
+    rotation_gait_symmetry = RewTerm(
+        func=m20_rewards.RotationGaitPerWheelDuty,
+        weight=5.0,
+        params={
+            "command_name": "base_velocity",
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces", body_names=["FL_foot", "RR_foot", "FR_foot", "RL_foot"], preserve_order=True
+            ),
+            "target_duty": 0.5,
+            "std": 0.2,
+            "swing_time_std": 0.1,
+            "lin_vel_threshold": 0.5,
+            "ang_vel_threshold": 0.05,
+        },
+    )
+    wheel_air_time_excess = RewTerm(
+        func=mdp.wheel_air_time_excess,
+        weight=-10.0,
+        params={
+            "command_name": "base_velocity",
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "max_air_time": 0.3,
+            "lin_vel_threshold": 0.5,
+            "ang_vel_threshold": 0.05,
+        },
     )
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
     action_smoothness = RewTerm(
         func=mdp.ActionSmoothnessPenalty,
         weight=-0.002,
@@ -230,14 +378,16 @@ class Go2WRoughRewardsCfg(LocomotionRewardsCfg):
 class Go2WRoughEnvCfg(Go2WFlatEnvCfg):
     """Go2W velocity tracking environment on rough terrain."""
 
-    scene: Go2WRoughSceneCfg = Go2WRoughSceneCfg(num_envs=4096, env_spacing=2.5)
+    scene: Go2WRoughSceneCfg = Go2WRoughSceneCfg(num_envs=8192, env_spacing=2.5)
     commands: Go2WRoughCommandsCfg = Go2WRoughCommandsCfg()
     curriculum: Go2WRoughCurriculumCfg = Go2WRoughCurriculumCfg()
     rewards: Go2WRoughRewardsCfg = Go2WRoughRewardsCfg()
 
     def __post_init__(self):
         super().__post_init__()
+        self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
         self.scene.base_height_scanner.update_period = self.decimation * self.sim.dt
+        self.scene.height_scanner_base.update_period = self.decimation * self.sim.dt
         self.terminations.bad_orientation = None
 
 

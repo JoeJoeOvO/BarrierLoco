@@ -79,6 +79,10 @@ python scripts/locomotion/train.py --task=OmniBot-Go2W-Flat-v0 --num_envs=4096 -
 python scripts/locomotion/train.py --task=OmniBot-Go2W-Rough-v0 --num_envs=4096 --logger wandb --video
 ```
 
+当前 Go2W Rough 在迁移前配置上加入选定的腿力矩、机身水平和腿姿态奖励，任务为 `OmniBot-Go2W-Rough-MLP-v0`、
+`OmniBot-Go2W-Rough-Rnn-v0` 和 `OmniBot-Go2W-Rough-DreamWaQ-v0`。
+整套 M20 配方仍未注册；当前范围与验证方法见[逐项迁移方案](../docs/m20_incremental_migration.md)。
+
 ### 推理/测试
 
 ```bash

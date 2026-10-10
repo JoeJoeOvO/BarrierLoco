@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -65,6 +66,98 @@ def track_ang_vel_z_exp(
     asset: RigidObject = env.scene[asset_cfg.name]
     ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_b[:, 2])
     return torch.exp(-ang_vel_error / std**2)
+
+
+def penalize_ang_vel_z(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Squared yaw-rate tracking error in the same base frame as the positive reward.
+
+    No command gate: zero-yaw lateral, forward, and standing commands also incur
+    a cost for unintended rotation. Apply a negative reward weight to penalize.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    error = env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_b[:, 2]
+    return error.square()
+
+
+def stand_still_joint_deviation_se2(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg,
+    command_threshold: float = 0.06,
+    angular_command_threshold: float = 0.06,
+) -> torch.Tensor:
+    """Penalize selected joint offsets only when translation and yaw commands are small."""
+    command = env.command_manager.get_command(command_name)
+    standing = (torch.linalg.vector_norm(command[:, :2], dim=1) < command_threshold) & (
+        command[:, 2].abs() < angular_command_threshold
+    )
+    asset = env.scene[asset_cfg.name]
+    deviation = (
+        asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.default_joint_pos[:, asset_cfg.joint_ids]
+    ).abs()
+    return deviation.sum(dim=1) * standing
+
+
+def wheel_air_time_excess(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    sensor_cfg: SceneEntityCfg,
+    max_air_time: float = 0.5,
+    lin_vel_threshold: float = 0.5,
+    ang_vel_threshold: float = 0.05,
+) -> torch.Tensor:
+    """Sum each wheel's ongoing air-time excess during low-speed turning.
+
+    Requires contact-sensor air-time tracking. Landing and environment reset clear
+    the sensor timers; no last-air-time, diagonal averaging, or gait scaling is used.
+    Timers include airtime before a command change, so an already suspended wheel
+    is penalized immediately on entering the turn gate.
+    """
+    sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    air_time = sensor.data.current_air_time[:, sensor_cfg.body_ids]
+    excess = (air_time - max_air_time).clamp(min=0.0).sum(dim=1)
+    command = env.command_manager.get_command(command_name)
+    turning = (torch.linalg.vector_norm(command[:, :2], dim=1) < lin_vel_threshold) & (
+        command[:, 2].abs() > ang_vel_threshold
+    )
+    return excess * turning
+
+
+def velocity_slack(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    min_ratio: float = 0.3,
+    max_ratio: float = 1.5,
+    command_threshold: float = 0.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward body-x speed inside an inclusive band in the commanded direction.
+
+    Uses the same body-frame velocity as the existing tracking rewards. Reverse
+    commands use a sign-adjusted interval; zero-x commands and stopped or
+    wrong-direction motion never receive this bonus. No gait-level scaling.
+    """
+    if not (math.isfinite(min_ratio) and math.isfinite(max_ratio) and 0.0 < min_ratio <= max_ratio):
+        raise ValueError("Velocity-slack ratios must be finite, positive, and ordered.")
+    if not (math.isfinite(command_threshold) and command_threshold >= 0.0):
+        raise ValueError("Velocity-slack command threshold must be finite and nonnegative.")
+    command_x = env.command_manager.get_command(command_name)[:, 0]
+    velocity_x = env.scene[asset_cfg.name].data.root_lin_vel_b[:, 0]
+    speed_command = command_x.abs()
+    aligned_speed = velocity_x * command_x.sign()
+    in_band = (
+        torch.isfinite(command_x)
+        & torch.isfinite(velocity_x)
+        & (speed_command > command_threshold)
+        & (aligned_speed > 0.0)
+        & (aligned_speed >= min_ratio * speed_command)
+        & (aligned_speed <= max_ratio * speed_command)
+    )
+    return in_band.to(dtype=velocity_x.dtype)
 
 
 def penalize_lin_vel_xy(

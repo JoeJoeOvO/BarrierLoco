@@ -13,6 +13,12 @@ JUMP_REFERENCE = PurePosixPath(
     "locolab/source/locomotion/mdp/reference_motions/go2w_jump_20cm_fast_full_dynamics_to.json"
 )
 GO2W_USD_ROOT = PurePosixPath("locolab/source/locomotion/assets/Go2W/usd")
+M20_RESOURCES = {
+    PurePosixPath("locolab/source/locomotion/assets/Go2W/urdf/go2w.urdf"),
+    PurePosixPath("locolab/source/locomotion/mdp/m20/LICENSE"),
+    PurePosixPath("locolab/source/locomotion/mdp/m20/LICENSE-robot_lab"),
+    PurePosixPath("locolab/source/locomotion/mdp/m20/README.md"),
+}
 REQUIRED_USD_FILES = {
     GO2W_USD_ROOT / "go2w.usd",
     GO2W_USD_ROOT / "configuration/go2w_base.usd",
@@ -35,7 +41,7 @@ def check_wheel(path: Path) -> None:
     """Assert that the wheel contains every runtime USD and jump reference."""
     with zipfile.ZipFile(path) as archive:
         members = {PurePosixPath(name) for name in archive.namelist()}
-        _require_paths(path, members, REQUIRED_USD_FILES | {JUMP_REFERENCE})
+        _require_paths(path, members, REQUIRED_USD_FILES | {JUMP_REFERENCE} | M20_RESOURCES)
 
         with archive.open(str(JUMP_REFERENCE)) as stream:
             payload = json.load(stream)
@@ -56,6 +62,7 @@ def check_sdist(path: Path) -> None:
             for member in archive.getmembers()
             if len(PurePosixPath(member.name).parts) > 1
         }
+    sdist_resources.update(item.relative_to("locolab") for item in M20_RESOURCES)
     _require_paths(path, members, sdist_resources)
 
 
@@ -68,6 +75,11 @@ def check_installed_resources() -> None:
     package_root = Path(locolab.__file__).resolve().parent
     reference = package_root / JUMP_REFERENCE.relative_to("locolab")
     usd_files = [package_root / item.relative_to("locolab") for item in REQUIRED_USD_FILES]
+
+    for item in M20_RESOURCES:
+        resource = package_root / item.relative_to("locolab")
+        if not resource.is_file() or resource.stat().st_size == 0:
+            raise RuntimeError(f"installed M20 resource is missing or empty: {resource}")
 
     if not reference.is_file():
         raise RuntimeError(f"installed jump reference is missing: {reference}")

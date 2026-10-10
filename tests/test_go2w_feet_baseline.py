@@ -42,12 +42,13 @@ def test_every_go2w_critic_inherits_body_frame_feet_velocity() -> None:
     )
 
 
-def test_rough_reward_penalizes_feet_stumble() -> None:
+def test_rough_reward_replaces_feet_stumble_with_wheel_contact_force() -> None:
     rough_tree = ast.parse(ROUGH_CFG.read_text())
     rewards_cfg = _class(rough_tree, "Go2WRoughRewardsCfg")
-    feet_stumble = ast.unparse(_assignment(rewards_cfg, "feet_stumble").value)
+    contact_force = ast.unparse(_assignment(rewards_cfg, "contact_forces").value)
 
-    assert "func=mdp.feet_stumble" in feet_stumble
-    assert "weight=-0.1" in feet_stumble
-    assert "SceneEntityCfg('contact_forces', body_names='.*_foot')" in feet_stumble
-    assert "'ratio_threshold': 5.0" in feet_stumble
+    assert "feet_stumble" not in ast.unparse(rewards_cfg)
+    assert "func=mdp.contact_forces" in contact_force
+    assert "weight=-0.00015" in contact_force
+    assert "SceneEntityCfg('contact_forces', body_names='.*_foot')" in contact_force
+    assert "'threshold': 56.6" in contact_force
