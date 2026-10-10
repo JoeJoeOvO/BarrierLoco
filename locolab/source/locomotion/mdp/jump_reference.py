@@ -12,7 +12,8 @@ from typing import NamedTuple
 import torch
 
 REFERENCE_MOTION_DIR = Path(__file__).with_name("reference_motions")
-DEFAULT_JUMP_REFERENCE_PATH = REFERENCE_MOTION_DIR / "go2w_jump_20cm_fast_full_dynamics_to.json"
+LEGACY_JUMP_REFERENCE_PATH = REFERENCE_MOTION_DIR / "go2w_jump_20cm_fast_full_dynamics_to.json"
+DEFAULT_JUMP_REFERENCE_PATH = REFERENCE_MOTION_DIR / "go2w_jump_smooth_transition_full_dynamics_to.json"
 GO2W_REFERENCE_LEG_JOINTS = (
     "FR_hip_joint",
     "FR_thigh_joint",
@@ -30,6 +31,7 @@ GO2W_REFERENCE_LEG_JOINTS = (
 __all__ = [
     "DEFAULT_JUMP_REFERENCE_PATH",
     "GO2W_JUMP_PROFILE",
+    "GO2W_LEGACY_JUMP_PROFILE",
     "GO2W_REFERENCE_LEG_JOINTS",
     "JumpProfile",
     "JumpReferenceSample",
@@ -85,12 +87,23 @@ class JumpProfile:
             raise ValueError(f"Jump-reference leg_joint_names are {joint_names!r}; expected {self.leg_joint_names!r}.")
 
 
-GO2W_JUMP_PROFILE = JumpProfile(
-    reference_path=DEFAULT_JUMP_REFERENCE_PATH,
+GO2W_LEGACY_JUMP_PROFILE = JumpProfile(
+    reference_path=LEGACY_JUMP_REFERENCE_PATH,
     takeoff_time=0.36,
     apex_time=0.54,
     landing_time=0.72,
     sequence_duration=0.80,
+    minimum_height=0.18,
+    jump_probability=0.8,
+    leg_joint_names=GO2W_REFERENCE_LEG_JOINTS,
+)
+
+GO2W_JUMP_PROFILE = JumpProfile(
+    reference_path=DEFAULT_JUMP_REFERENCE_PATH,
+    takeoff_time=0.38,
+    apex_time=0.62,
+    landing_time=0.88,
+    sequence_duration=1.80,
     minimum_height=0.18,
     jump_probability=0.8,
     leg_joint_names=GO2W_REFERENCE_LEG_JOINTS,
@@ -106,6 +119,10 @@ class JumpReferenceSample(NamedTuple):
     base_pitch_rate: torch.Tensor
     joint_position: torch.Tensor
     joint_velocity: torch.Tensor
+    base_orientation: torch.Tensor | None = None
+    base_angular_velocity_world: torch.Tensor | None = None
+    wheel_position: torch.Tensor | None = None
+    wheel_velocity: torch.Tensor | None = None
 
 
 class JumpReferenceTrajectory:
@@ -126,6 +143,9 @@ class JumpReferenceTrajectory:
         self.base_pitch_rate = torch.as_tensor(payload["base_pitch_rate"], device=device, dtype=dtype)
         self.joint_position = torch.as_tensor(payload["joint_position"], device=device, dtype=dtype)
         self.joint_velocity = torch.as_tensor(payload["joint_velocity"], device=device, dtype=dtype)
+        for field in ("base_orientation", "base_angular_velocity_world", "wheel_position", "wheel_velocity"):
+            value = payload.get(field)
+            setattr(self, field, torch.as_tensor(value, device=device, dtype=dtype) if value is not None else None)
         self._validate()
         if profile is not None:
             profile.validate_reference_metadata(self.metadata)
@@ -167,6 +187,15 @@ class JumpReferenceTrajectory:
             alpha = blend.reshape(shape)
             return values[left] + alpha * (values[right] - values[left])
 
+        orientation = None
+        if self.base_orientation is not None:
+            qa, qb = self.base_orientation[left], self.base_orientation[right]
+            qb = torch.where((qa * qb).sum(-1, keepdim=True) < 0, -qb, qb)
+            orientation = torch.nn.functional.normalize(qa + blend[:, None] * (qb - qa), dim=-1)
+
+        def optional(values):
+            return None if values is None else interpolate(values)
+
         return JumpReferenceSample(
             base_position=interpolate(self.base_position),
             base_linear_velocity=interpolate(self.base_linear_velocity),
@@ -174,6 +203,10 @@ class JumpReferenceTrajectory:
             base_pitch_rate=interpolate(self.base_pitch_rate),
             joint_position=interpolate(self.joint_position),
             joint_velocity=interpolate(self.joint_velocity),
+            base_orientation=orientation,
+            base_angular_velocity_world=optional(self.base_angular_velocity_world),
+            wheel_position=optional(self.wheel_position),
+            wheel_velocity=optional(self.wheel_velocity),
         )
 
     def _validate(self) -> None:
@@ -182,6 +215,8 @@ class JumpReferenceTrajectory:
             raise ValueError("A jump reference must contain at least two one-dimensional time samples.")
         if not torch.all(self.time[1:] > self.time[:-1]):
             raise ValueError("Jump-reference time samples must be strictly increasing.")
+        if not torch.isfinite(self.time).all():
+            raise ValueError("Jump-reference times must be finite.")
 
         expected_shapes = {
             "base_position": (sample_count, 3),
@@ -195,6 +230,27 @@ class JumpReferenceTrajectory:
             actual = tuple(getattr(self, name).shape)
             if actual != expected:
                 raise ValueError(f"Reference field {name!r} has shape {actual}; expected {expected}.")
+            if not torch.isfinite(getattr(self, name)).all():
+                raise ValueError(f"Reference field {name!r} must be finite.")
+
+        for a, b in (("base_orientation", "base_angular_velocity_world"), ("wheel_position", "wheel_velocity")):
+            if (getattr(self, a) is None) != (getattr(self, b) is None):
+                raise ValueError(f"Reference fields {a!r} and {b!r} must be supplied together.")
+        for name, width in (
+            ("base_orientation", 4),
+            ("base_angular_velocity_world", 3),
+            ("wheel_position", 4),
+            ("wheel_velocity", 4),
+        ):
+            value = getattr(self, name)
+            if value is not None and (tuple(value.shape) != (sample_count, width) or not torch.isfinite(value).all()):
+                raise ValueError(f"Reference field {name!r} must be finite with shape {(sample_count, width)}.")
+        if self.base_orientation is not None:
+            norms = torch.linalg.vector_norm(self.base_orientation, dim=-1)
+            if not torch.allclose(norms, torch.ones_like(norms), atol=1e-4, rtol=0):
+                raise ValueError("Reference quaternions must have unit length.")
+        if self.wheel_position is not None and len(self.metadata.get("wheel_joint_names", ())) != 4:
+            raise ValueError("A full wheel reference requires four named wheel joints.")
 
         required_metadata = {"target_jump_height", "flight_start_time", "flight_end_time", "mass", "gravity"}
         missing = required_metadata.difference(self.metadata)
@@ -218,8 +274,11 @@ def load_jump_reference(
     path: str | Path = DEFAULT_JUMP_REFERENCE_PATH,
     device: str | torch.device = "cpu",
     dtype: torch.dtype = torch.float32,
-    profile: JumpProfile = GO2W_JUMP_PROFILE,
+    profile: JumpProfile | None = None,
 ) -> JumpReferenceTrajectory:
     """Load and cache a trajectory once for each training device and dtype."""
     resolved = resolve_reference_path(path)
+    if profile is None:
+        profiles = (GO2W_JUMP_PROFILE, GO2W_LEGACY_JUMP_PROFILE)
+        profile = next((p for p in profiles if p.reference_path.name == resolved.name), None)
     return JumpReferenceTrajectory.from_json(resolved, device=device, dtype=dtype, profile=profile)

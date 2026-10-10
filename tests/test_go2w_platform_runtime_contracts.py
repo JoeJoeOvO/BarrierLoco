@@ -245,3 +245,21 @@ def test_grid_plane_requires_an_active_simulation_context() -> None:
 
     with pytest.raises(RuntimeError, match="active SimulationContext"):
         module.GridPlaneTerrainImporter(Cfg())
+
+
+def test_moving_jump_plane_leaves_room_beyond_outermost_origins() -> None:
+    module = _load_grid_plane_module(SimpleNamespace(device="cpu"))
+
+    class Cfg:
+        num_envs = 4096
+        env_spacing = 2.5
+        terrain_type = "plane"
+        debug_vis = False
+
+        def validate(self):
+            pass
+
+    importer = module.MovingJumpPlaneTerrainImporter(Cfg())
+    _, mesh = importer.imported_mesh
+    assert mesh.size == (200.0, 200.0)
+    assert module.MovingJumpPlaneTerrainImporter.border_margin > 10.0 * 1.5 + 0.5 + 1.0

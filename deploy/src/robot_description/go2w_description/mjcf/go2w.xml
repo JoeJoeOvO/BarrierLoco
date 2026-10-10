@@ -7,7 +7,7 @@
     <default class="go2">
       <geom friction="0.4" margin="0.001" condim="1" />
       <joint axis="0 1 0" damping="0.1" armature="0.01" frictionloss="0.2" />
-      <motor ctrlrange="-23.7 23.7" />
+      <motor ctrlrange="-23.5 23.5" />
       <default class="abduction">
         <joint axis="1 0 0" range="-1.0472 1.0472" />
       </default>
@@ -21,7 +21,7 @@
       </default>
       <default class="knee">
         <joint range="-2.7227 -0.83776" />
-        <motor ctrlrange="-45.43 45.43" />
+        <motor ctrlrange="-35 35" />
       </default>
       <default class="visual">
         <geom type="mesh" contype="0" conaffinity="0" group="2" />
@@ -263,10 +263,10 @@
     <motor class="hip" name="RL_thigh" joint="RL_thigh_joint" />
     <motor class="knee" name="RL_calf" joint="RL_calf_joint" />
 
-    <motor ctrlrange="-15 15" name="FR_wheel" joint="FR_wheel_joint" />
-    <motor ctrlrange="-15 15" name="FL_wheel" joint="FL_wheel_joint" />
-    <motor ctrlrange="-15 15" name="RR_wheel" joint="RR_wheel_joint" />
-    <motor ctrlrange="-15 15" name="RL_wheel" joint="RL_wheel_joint" />
+    <motor ctrlrange="-23.5 23.5" name="FR_wheel" joint="FR_wheel_joint" />
+    <motor ctrlrange="-23.5 23.5" name="FL_wheel" joint="FL_wheel_joint" />
+    <motor ctrlrange="-23.5 23.5" name="RR_wheel" joint="RR_wheel_joint" />
+    <motor ctrlrange="-23.5 23.5" name="RL_wheel" joint="RL_wheel_joint" />
   </actuator>
 
   <sensor>

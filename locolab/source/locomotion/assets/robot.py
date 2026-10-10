@@ -47,8 +47,18 @@ GO2W_CFG = ArticulationCfg(
     actuators={
         "legs": ImplicitActuatorCfg(
             joint_names_expr=["^(?!.*_foot_joint).*"],
-            effort_limit_sim=23.5,
-            velocity_limit_sim=30.0,
+            # User-selected conservative rounding of the official Go2-W model limits.
+            # Pinned official source: docs/go2w_actuator_limits.md.
+            effort_limit_sim={
+                ".*_hip_joint": 23.5,
+                ".*_thigh_joint": 23.5,
+                ".*_calf_joint": 35.0,
+            },
+            velocity_limit_sim={
+                ".*_hip_joint": 30.0,
+                ".*_thigh_joint": 30.0,
+                ".*_calf_joint": 20.0,
+            },
             stiffness=40.0,
             damping=1.0,
             friction=0.0,

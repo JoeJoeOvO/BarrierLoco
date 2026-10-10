@@ -1,0 +1,146 @@
+{
+  "task": "OmniBot-Go2W-Jump-MLP-v0",
+  "provenance": {
+    "task": "OmniBot-Go2W-Jump-MLP-v0",
+    "training_complete": true,
+    "stages": [
+      {
+        "stage": "skill",
+        "run": "2026-10-09_11-35-16_jump_smooth_to_skill_scratch_4096_gpu3_5k_video",
+        "initialization": "random actor, critic and optimizer; no existing policy loaded",
+        "updates": 5000,
+        "checkpoint": "model_4999.pt",
+        "sha256": "173b0d9e22e2b451c317b7892b326a341aa85358a1c280e6f39cd36ec50f71fb",
+        "vx_range": [
+          0.2,
+          0.5
+        ],
+        "reference_reset_probability": 0.8,
+        "wandb": "https://wandb.ai/ssh45441-xi-an-jiaotong-university-/omnibot-go2w/runs/9n03qoo7"
+      },
+      {
+        "stage": "speed",
+        "run": "2026-10-09_16-44-59_jump_smooth_to_speed02_15_forward_resume_s1_4096_gpu3_5k_video",
+        "initialization": "full resume from the bundled skill-stage model_4999.pt",
+        "updates": 5000,
+        "checkpoint": "model_9998.pt",
+        "sha256": "64dc3fe4396e79afd0bc3e8a2496f6cc262ffa78466d409ff7c1e454d74dc550",
+        "vx_range": [
+          0.2,
+          1.5
+        ],
+        "reference_reset_probability": 0.2,
+        "heading_hold_seconds": 2.2,
+        "wandb": "https://wandb.ai/ssh45441-xi-an-jiaotong-university-/omnibot-go2w/runs/tyqvcpfm"
+      }
+    ],
+    "total_ppo_updates": 10000,
+    "checkpoint_numbering": "The runner resumes at the saved loop index; two 5000-update calls finish at index 9998.",
+    "num_envs": 4096,
+    "seed": 42,
+    "gpu_count": 1,
+    "policy_type": "ActorCritic MLP; deterministic mean action for evaluation",
+    "reference": "locolab/source/locomotion/mdp/reference_motions/go2w_jump_smooth_transition_full_dynamics_to.json",
+    "reference_sha256": "6be0a2240dde25a5daf1b0ddd4d6b0df937d25def2128fb4a55fd60f9849c8e2",
+    "reference_schedule_seconds": [
+      0.38,
+      0.62,
+      0.88,
+      1.8
+    ],
+    "jump_command_duration_seconds": 2.2,
+    "self_collisions": true,
+    "leg_action_scale": 0.25,
+    "wheel_action_scale": 10.0,
+    "training_leg_limits": {
+      "effort_Nm": 23.5,
+      "velocity_rad_s": 30.0
+    },
+    "deployment_status": "Network bundle only. No jump controller integration or hardware validation."
+  },
+  "source_config_sha256": {
+    "model_4999.pt": "173b0d9e22e2b451c317b7892b326a341aa85358a1c280e6f39cd36ec50f71fb",
+    "model_9998.pt": "64dc3fe4396e79afd0bc3e8a2496f6cc262ffa78466d409ff7c1e454d74dc550",
+    "params/agent.yaml": "1e0187540c50b499ecb2253801beff6300bc733fa66d90d9f615912a462f893f",
+    "params/env.yaml": "6199e03dfd99ecaf90bc430fe48a030d7ca426f2166a4181b1dc497e50f87182",
+    "params/skill/agent.yaml": "e570798a043d5086ab5d5c6472c209e6f4276778af1d21512579c7cbd9d6d302",
+    "params/skill/env.yaml": "7d65c22ecd54c9a307ac105bf15b377624017bb0c7d5e071a0dd220cfb6d06d0"
+  },
+  "iteration": 9998,
+  "additional_training_iterations": 5000,
+  "total_training_updates": 10000,
+  "command_schedule_is_external": true,
+  "actor_observations": 54,
+  "critic_observations": 309,
+  "actions": 16,
+  "actor_hidden_dims": [
+    512,
+    256,
+    128
+  ],
+  "activation": "elu",
+  "deterministic_mean_actions": true,
+  "observation_normalization": false,
+  "onnx_interface": {
+    "input": "obs",
+    "input_shape": [
+      1,
+      54
+    ],
+    "output": "actions",
+    "output_shape": [
+      1,
+      16
+    ]
+  },
+  "exporter": {
+    "implementation": "isaaclab_rl/rsl_rl/exporter.py",
+    "sha256": "d8e44dc5fda3fb6b135a7cf56c76338678103aac314851d59ad5399975a00e04"
+  },
+  "versions": {
+    "torch": "2.7.0+cu128",
+    "onnx": "1.19.0",
+    "onnxruntime": "1.23.1"
+  },
+  "validation": {
+    "samples": 385,
+    "seed": 42,
+    "max_absolute_error": {
+      "torchscript": 0.0,
+      "onnx": 0.000274658203125
+    },
+    "max_absolute_error_by_input_std": {
+      "zero": {
+        "torchscript": 0.0,
+        "onnx": 1.7881393432617188e-07
+      },
+      "0.1": {
+        "torchscript": 0.0,
+        "onnx": 1.0728836059570312e-06
+      },
+      "1": {
+        "torchscript": 0.0,
+        "onnx": 2.2411346435546875e-05
+      },
+      "10": {
+        "torchscript": 0.0,
+        "onnx": 0.000274658203125
+      }
+    },
+    "rtol": 1e-05,
+    "atol": 0.0002
+  },
+  "validation_scope": "CPU export equivalence; separate final native Isaac Lab evaluation; no real-robot validation",
+  "files_sha256": {
+    "model_4999.pt": "173b0d9e22e2b451c317b7892b326a341aa85358a1c280e6f39cd36ec50f71fb",
+    "model_9998.pt": "64dc3fe4396e79afd0bc3e8a2496f6cc262ffa78466d409ff7c1e454d74dc550",
+    "policy.pt": "848ac6a1df7589fbfba8cedb822e18bd4c6f711282b834da2aa0665a9515c587",
+    "policy.onnx": "0974e31d7308e065d4eca431088cb840798fd89f6bf061a8b5933d4d2c46a587",
+    "params/agent.yaml": "1e0187540c50b499ecb2253801beff6300bc733fa66d90d9f615912a462f893f",
+    "params/env.yaml.gz": "c597493ccca4f5e89d7879fa2d7ea635d627a2b122e5a933acb28c4c81668fd0",
+    "params/skill/agent.yaml": "e570798a043d5086ab5d5c6472c209e6f4276778af1d21512579c7cbd9d6d302",
+    "params/skill/env.yaml.gz": "570d39ab0b94ba0b766b62a45e807216f6efd29f8018defdbc4797fdd0a516f0",
+    "params/source_files_sha256.json": "399f4682392acec8cc2182e8bf961c4444ffd0eaa29af373ccad307abddb6775",
+    "training_provenance.json": "761ad40564dae4845067812e74ec468075a494b0fc19ff607f5dd98821b0ddef"
+  }
+}

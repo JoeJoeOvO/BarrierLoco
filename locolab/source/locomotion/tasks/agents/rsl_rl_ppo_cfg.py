@@ -190,17 +190,7 @@ class Go2WJumpMLPPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
         super().__post_init__()
         self.max_iterations = 5000
         self.experiment_name = "omnibot_go2w_jump_mlp_v0"
-        self.resume_experiment_name = "omnibot_go2w_jump_flat_pretrain_mlp_v0"
-
-
-@configclass
-class Go2WJumpFlatPretrainMLPPPORunnerCfg(Go2WJumpMLPPPORunnerCfg):
-    """Produce observation-compatible Flat checkpoints for Jump warm-starting."""
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self.experiment_name = "omnibot_go2w_jump_flat_pretrain_mlp_v0"
-        self.resume_experiment_name = None
+        self.resume_experiment_name = self.experiment_name
 
 
 @configclass

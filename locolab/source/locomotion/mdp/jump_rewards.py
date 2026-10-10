@@ -25,9 +25,15 @@ __all__ = [
     "jump_inactive_joint_deviation_l1",
     "jump_inactive_lin_vel_z_l2",
     "jump_inactive_track_ang_vel_z_exp",
+    "jump_heading_error_l2",
+    "jump_heading_yaw_velocity_l2",
+    "jump_heading_lateral_velocity_l2",
+    "jump_landing_vertical_velocity_l2",
     "jump_pre_takeoff_reference_joint_position_reward",
     "jump_pre_takeoff_reference_joint_velocity_reward",
     "jump_reference_joint_position_reward",
+    "jump_reference_joint_velocity_reward",
+    "jump_track_lin_vel_xy_exp",
     "jump_wheel_velocity_l2",
 ]
 
@@ -72,7 +78,9 @@ def _reference_context(
         cached = (cache_key, trajectory, sample)
         term._reference_reward_cache = cached
     _, trajectory, sample = cached
-    valid = term.active & (term.reference_time <= trajectory.duration)
+    # Sampling clamps to the last TO pose. Keep that pose during the fixed
+    # recovery extension, instead of creating another gap after TO ends.
+    valid = term.active
     return term, asset, trajectory, sample, valid
 
 
@@ -107,7 +115,7 @@ def jump_ascent_vertical_velocity_reward(
     term = _jump_command_term(env, command_name)
     asset = env.scene[asset_cfg.name]
     upward_velocity = torch.clamp_min(asset.data.root_lin_vel_w[:, 2], 0.0)
-    scheduled_ascent = term.active & (term.reference_time <= ascent_end_time)
+    scheduled_ascent = term.active & term.is_in_flight & (term.reference_time <= ascent_end_time)
     scheduled_ascent = _gate_to_current_four_wheel_flight(term, scheduled_ascent, require_all_wheels_airborne)
     return upward_velocity * scheduled_ascent.to(upward_velocity.dtype)
 
@@ -125,7 +133,7 @@ def _jump_ascent_reference_height_error(
     term, asset, trajectory, sample, valid = _reference_context(env, command_name, reference_path, asset_cfg)
     desired_relative_height = sample.base_position[:, 2] - trajectory.base_position[0, 2]
     actual_relative_height = asset.data.root_pos_w[:, 2] - term.trigger_height
-    scheduled_ascent = valid & (term.reference_time <= ascent_end_time)
+    scheduled_ascent = valid & term.is_in_flight & (term.reference_time <= ascent_end_time)
     scheduled_ascent = _gate_to_current_four_wheel_flight(term, scheduled_ascent, require_all_wheels_airborne)
     return actual_relative_height - desired_relative_height, scheduled_ascent
 
@@ -234,6 +242,29 @@ def jump_pre_takeoff_reference_joint_position_reward(
     return _masked_gaussian((actual - sample.joint_position) / std, pre_takeoff)
 
 
+def jump_reference_joint_velocity_reward(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    reference_path: str,
+    start_time: float,
+    std: float,
+    asset_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Track TO leg velocity through flight and landing, independent of contact."""
+    _positive_std(std)
+    term, asset, trajectory, sample, valid = _reference_context(env, command_name, reference_path, asset_cfg)
+    valid = valid & (term.reference_time >= start_time)
+    actual = asset.data.joint_vel[:, asset_cfg.joint_ids]
+    if actual.shape[-1] != sample.joint_velocity.shape[-1]:
+        raise ValueError(f"Expected 12 tracked leg joints, got {actual.shape[-1]}.")
+    target = torch.where(
+        (term.reference_time >= trajectory.duration).unsqueeze(-1),
+        torch.zeros_like(sample.joint_velocity),
+        sample.joint_velocity,
+    )
+    return _masked_gaussian((actual - target) / std, valid)
+
+
 def jump_pre_takeoff_reference_joint_velocity_reward(
     env: ManagerBasedRLEnv,
     command_name: str,
@@ -298,6 +329,7 @@ def jump_inactive_joint_deviation_l1(
     env: ManagerBasedRLEnv,
     command_name: str,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    velocity_command_name: str | None = None,
 ) -> torch.Tensor:
     """Keep the default pose for command zero without suppressing TO crouching."""
     term = _jump_command_term(env, command_name)
@@ -305,17 +337,109 @@ def jump_inactive_joint_deviation_l1(
     actual = asset.data.joint_pos[:, asset_cfg.joint_ids]
     default = asset.data.default_joint_pos[:, asset_cfg.joint_ids]
     penalty = torch.abs(actual - default).sum(dim=-1)
-    return penalty * (~term.active).to(penalty.dtype)
+    mask = ~term.active
+    if velocity_command_name is not None:
+        velocity_command = env.command_manager.get_command(velocity_command_name)
+        mask &= torch.linalg.vector_norm(velocity_command[:, :3], dim=-1) < 0.1
+    return penalty * mask.to(penalty.dtype)
+
+
+def jump_track_lin_vel_xy_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    jump_command_name: str,
+    std: float,
+    active_multiplier: float = 2.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    lock_jump_heading: bool = False,
+) -> torch.Tensor:
+    """Maintain commanded horizontal motion through a jump, in the yaw frame.
+
+    Full body-frame velocity would mix vertical velocity into vx when pitching.
+    Neither the reference's zero initial vx nor an in-air zero command is used.
+    """
+    _positive_std(std)
+    term = _jump_command_term(env, jump_command_name)
+    asset = env.scene[asset_cfg.name]
+    w, x, y, z = asset.data.root_quat_w.unbind(dim=-1)
+    yaw = torch.atan2(2 * (w * z + x * y), 1 - 2 * (y.square() + z.square()))
+    vx, vy = asset.data.root_lin_vel_w[:, :2].unbind(dim=-1)
+    velocity = torch.stack((yaw.cos() * vx + yaw.sin() * vy, -yaw.sin() * vx + yaw.cos() * vy), dim=-1)
+    if lock_jump_heading:
+        velocity = torch.where(
+            term.heading_tracking_mask[:, None], term.velocity_in_trigger_frame(asset.data.root_lin_vel_w), velocity
+        )
+    target = env.command_manager.get_command(command_name)[:, :2]
+    reward = torch.exp(-torch.sum((velocity - target).square(), dim=-1) / std**2)
+    return reward * (1.0 + (active_multiplier - 1.0) * term.active.to(reward.dtype))
+
+
+def jump_heading_error_l2(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """Keep the yaw captured at trigger through takeoff, flight and recovery."""
+    term = _jump_command_term(env, command_name)
+    return term.heading_error().square() * term.heading_tracking_mask
+
+
+def jump_heading_yaw_velocity_l2(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Suppress world-z angular velocity during the held jump direction."""
+    term = _jump_command_term(env, command_name)
+    asset = env.scene[asset_cfg.name]
+    return asset.data.root_ang_vel_w[:, 2].square() * term.heading_tracking_mask
+
+
+def jump_heading_lateral_velocity_l2(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    velocity_command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Track lateral command in the fixed trigger frame (zero for forward jumps)."""
+    term = _jump_command_term(env, command_name)
+    asset = env.scene[asset_cfg.name]
+    lateral = term.velocity_in_trigger_frame(asset.data.root_lin_vel_w)[:, 1]
+    target = env.command_manager.get_command(velocity_command_name)[:, 1]
+    return (lateral - target).square() * term.heading_tracking_mask
 
 
 def jump_wheel_velocity_l2(
     env: ManagerBasedRLEnv,
-    command_name: str,
     asset_cfg: SceneEntityCfg,
+    sensor_cfg: SceneEntityCfg,
+    contact_force_threshold: float = 1.0,
 ) -> torch.Tensor:
-    """Keep all four wheel joints still only during scheduled flight."""
+    """Penalize each airborne wheel, including flight beyond the fixed jump clock.
+
+    The two entity configs must use the same explicit leg order. Grounded wheels
+    remain free to track forward velocity even inside the scheduled flight phase.
+    """
+    asset = env.scene[asset_cfg.name]
+    sensor = env.scene.sensors[sensor_cfg.name]
+    wheel_velocity = asset.data.joint_vel[:, asset_cfg.joint_ids]
+    forces = sensor.data.net_forces_w[:, sensor_cfg.body_ids]
+    airborne = torch.linalg.vector_norm(forces, dim=-1) <= contact_force_threshold
+    if wheel_velocity.shape != airborne.shape or wheel_velocity.shape[-1] != 4:
+        raise ValueError("Expected four wheel velocities and four matching contact states.")
+    return (wheel_velocity.square() * airborne.to(wheel_velocity.dtype)).mean(dim=-1)
+
+
+def jump_landing_vertical_velocity_l2(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    descent_start_time: float,
+    velocity_tolerance: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Damp residual vertical speed on contact after apex, including late landings.
+
+    This is a contact-settling cost, not a measurement of pre-impact velocity.
+    Ballistic descent and the grounded takeoff push are deliberately unpenalized.
+    """
     term = _jump_command_term(env, command_name)
     asset = env.scene[asset_cfg.name]
-    wheel_velocity = asset.data.joint_vel[:, asset_cfg.joint_ids]
-    penalty = torch.mean(torch.square(wheel_velocity), dim=-1)
-    return penalty * term.is_in_flight.to(penalty.dtype)
+    excess_speed = (asset.data.root_lin_vel_w[:, 2].abs() - velocity_tolerance).clamp_min(0.0)
+    landing_contact = (term.reference_time >= descent_start_time) & term.contact_state.any(dim=-1)
+    return excess_speed.square() * landing_contact.to(excess_speed.dtype)

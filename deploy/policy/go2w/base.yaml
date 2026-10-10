@@ -16,10 +16,11 @@ go2w:
              0.5, 0.5, 0.5, 0.5]
   num_of_dofs: 16
   wheel_indices: [12, 13, 14, 15]
-  torque_limits: [23.5, 23.5, 23.5,
-                  23.5, 23.5, 23.5,
-                  23.5, 23.5, 23.5,
-                  23.5, 23.5, 23.5,
+  # Conservative rounded Go2-W model limits in SDK order; not continuous ratings.
+  torque_limits: [23.5, 23.5, 35.0,
+                  23.5, 23.5, 35.0,
+                  23.5, 23.5, 35.0,
+                  23.5, 23.5, 35.0,
                   23.5, 23.5, 23.5, 23.5]
   default_dof_pos: [ 0.00, 0.80, -1.50,
                      0.00, 0.80, -1.50,
