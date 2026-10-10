@@ -6,49 +6,17 @@ import copy
 import math
 
 import isaaclab.terrains as terrain_gen
-import torch
-from isaaclab.assets import Articulation
-from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 from locolab.source.locomotion import mdp
-from locolab.source.locomotion.tasks.velocity_env_cfg import LocomotionEventCfg
 from locolab.source.locomotion.terrains.high_platform_cfg import (
     MeshHighPlatformSequenceTerrainCfg,
     MeshHighPlatformTerrainCfg,
 )
 
 from .rough_env_cfg import Go2WRoughCommandsCfg, Go2WRoughEnvCfg, Go2WRoughRewardsCfg, Go2WRoughSceneCfg
-
-
-def joint_pair_symmetry_l2(
-    env,
-    asset_cfg: SceneEntityCfg,
-    joint_pairs: list[list[str]],
-    opposite_sign: bool = True,
-) -> torch.Tensor:
-    """Penalize position asymmetry for explicitly paired joints."""
-    asset: Articulation = env.scene[asset_cfg.name]
-    cache_key = (asset_cfg.name, tuple(tuple(pair) for pair in joint_pairs), opposite_sign)
-    cache = getattr(env, "_high_platform_joint_pair_cache", None)
-    if cache is None:
-        cache = {}
-        env._high_platform_joint_pair_cache = cache
-    if cache_key not in cache:
-        cache[cache_key] = [(asset.find_joints(left)[0], asset.find_joints(right)[0]) for left, right in joint_pairs]
-
-    penalty = torch.zeros(env.num_envs, device=env.device)
-    for left_ids, right_ids in cache[cache_key]:
-        left_position = asset.data.joint_pos[:, left_ids]
-        right_position = asset.data.joint_pos[:, right_ids]
-        error = left_position + right_position if opposite_sign else left_position - right_position
-        penalty += torch.sum(torch.square(error), dim=-1)
-    if joint_pairs:
-        penalty /= len(joint_pairs)
-    return penalty
-
 
 GO2W_HIGH_PLATFORM_TERRAIN_CFG = terrain_gen.TerrainGeneratorCfg(
     size=(8.0, 8.0),
@@ -140,47 +108,9 @@ class Go2WHighPlatformCommandsCfg(Go2WRoughCommandsCfg):
 
 
 @configclass
-class Go2WHighPlatformEventsCfg(LocomotionEventCfg):
-    """Training randomization used by the validated platform run."""
-
-    wheel_resistance = EventTerm(
-        func=mdp.wheel_resistance_xy,
-        mode="interval",
-        interval_range_s=(0.0, 0.0),
-        params={
-            "resample_probability": 0.01,
-            "linear_res_coef_range": (0.0, 2.0),
-            "quadratic_res_coef_range": (0.0, 0.2),
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
-        },
-    )
-
-
-@configclass
 class Go2WHighPlatformRewardsCfg(Go2WRoughRewardsCfg):
-    """Frozen reward profile from the validated HighPlatform training run."""
+    """Inherit the current Rough rewards, adding only the wheel-stumble penalty."""
 
-    stay_alive = RewTerm(func=mdp.stay_alive_startup, weight=5.0)
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-100.0)
-    track_lin_vel_xy_enhance = RewTerm(
-        func=mdp.track_lin_vel_xy_exp,
-        weight=0.5,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.04)},
-    )
-    track_ang_vel_z_enhance = RewTerm(
-        func=mdp.track_ang_vel_z_exp,
-        weight=0.25,
-        params={"command_name": "base_velocity", "std": math.sqrt(0.04)},
-    )
-    collision = RewTerm(
-        func=mdp.undesired_contacts,
-        weight=-1.0,
-        params={
-            "threshold": 1.0,
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_thigh", ".*_calf", ".*_hip", "base"]),
-        },
-    )
     feet_stumble = RewTerm(
         func=mdp.feet_stumble,
         weight=-0.1,
@@ -188,41 +118,6 @@ class Go2WHighPlatformRewardsCfg(Go2WRoughRewardsCfg):
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "ratio_threshold": 5.0,
         },
-    )
-    stand_still = RewTerm(
-        func=mdp.stand_still,
-        weight=-0.5,
-        params={
-            "command_name": "base_velocity",
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"]),
-        },
-    )
-    hip_default = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.15,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*"])},
-    )
-    hip_lr_symmetry = RewTerm(
-        func=joint_pair_symmetry_l2,
-        weight=-0.05,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "joint_pairs": [
-                ["FL_hip_joint", "FR_hip_joint"],
-                ["RL_hip_joint", "RR_hip_joint"],
-            ],
-            "opposite_sign": True,
-        },
-    )
-    joint_default = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.05,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_thigh_.*", ".*_calf_.*"])},
-    )
-    dof_pos_limits = RewTerm(
-        func=mdp.joint_pos_limits,
-        weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_thigh_.*", ".*_calf_.*"])},
     )
 
 
@@ -233,7 +128,7 @@ class Go2WHighPlatformEnvCfg(Go2WRoughEnvCfg):
     scene: Go2WHighPlatformSceneCfg = Go2WHighPlatformSceneCfg(num_envs=8192, env_spacing=2.5)
     commands: Go2WHighPlatformCommandsCfg = Go2WHighPlatformCommandsCfg()
     rewards: Go2WHighPlatformRewardsCfg = Go2WHighPlatformRewardsCfg()
-    events: Go2WHighPlatformEventsCfg = Go2WHighPlatformEventsCfg()
+    # Observations, actions, randomization, terminations, and curriculum come from Rough.
 
     def __post_init__(self):
         super().__post_init__()
@@ -290,4 +185,3 @@ class Go2WHighPlatformPlayEnvCfg(Go2WHighPlatformEnvCfg):
         self.events.randomize_joint_friction = None
         self.events.randomize_actuator_gains = None
         self.events.base_external_force_torque = None
-        self.events.wheel_resistance = None

@@ -1,0 +1,93 @@
+{
+  "task": "OmniBot-Go2W-HighPlatform-MLP-v0",
+  "provenance": {
+    "task": "OmniBot-Go2W-HighPlatform-MLP-v0",
+    "source_host": "omnibot-remote",
+    "source_root": "/home/sshang/omnibot_data/workspaces/OmniBot-go2w-highplatform-rough-mlp-20260922",
+    "base_commit": "3dda20b374a382cd01a7a7f7d45e3693767826d3",
+    "source_branch": "feature/go2w-highplatform-rough-mlp",
+    "training_source_note": "Base commit plus the HighPlatform Rough-inheritance change; exact 131-file training snapshot hashes are in params/source_files_sha256.json.",
+    "run": "2026-09-22_10-52-39_highplatform_rough_mlp_resume4999_stumble5_8192_1gpu_5k_video",
+    "experiment_name": "omnibot_go2w_highplatform_mlp_v0",
+    "wandb_url": "https://wandb.ai/ssh45441-xi-an-jiaotong-university-/omnibot-go2w/runs/w7lto3un",
+    "resume_run": "2026-09-21_21-39-38_rough_main_4gpu_mlp_scratch_5k_video",
+    "resume_experiment_name": "omnibot_go2w_rough_mlp_v0",
+    "resume_checkpoint": "model_4999.pt",
+    "resume_checkpoint_sha256": "31f2abc30d73daa5106363ef7f34155e47b348dbe71e58fe6bfc0586394c83ac",
+    "resume_optimizer": true,
+    "additional_iterations": 5000,
+    "first_iteration_label": 4999,
+    "last_iteration_label": 9998,
+    "final_checkpoint": "model_9998.pt",
+    "final_checkpoint_sha256": "85a13a13d35bd2ec7ff1eb5a1a25aaa3640668a5918bdac4072774a7b097c46a",
+    "num_envs": 8192,
+    "training_gpus": [
+      0
+    ],
+    "seed": 42,
+    "episode_length_s": 10.0,
+    "training_exit_code": 0,
+    "video_interval_iterations": 500,
+    "video_length_steps": 1000,
+    "evaluation": "../../../../artifacts/go2w_highplatform/20260923_final_9998/results.json"
+  },
+  "source_config_sha256": {
+    "model_9998.pt": "85a13a13d35bd2ec7ff1eb5a1a25aaa3640668a5918bdac4072774a7b097c46a",
+    "params/agent.yaml": "182992edaa70665569e95d9668a0976a3fc64c32318d8e1c339b983a0992749f",
+    "params/env.yaml": "c02ea5986273c926a5378ee2ec9900a02d1bf40d911ab62be4eff5c33c0030f0"
+  },
+  "iteration": 9998,
+  "additional_training_iterations": 5000,
+  "actor_observations": 53,
+  "critic_observations": 307,
+  "actions": 16,
+  "actor_hidden_dims": [
+    512,
+    256,
+    128
+  ],
+  "activation": "elu",
+  "deterministic_mean_actions": true,
+  "observation_normalization": false,
+  "onnx_interface": {
+    "input": "obs",
+    "input_shape": [
+      1,
+      53
+    ],
+    "output": "actions",
+    "output_shape": [
+      1,
+      16
+    ]
+  },
+  "exporter": {
+    "implementation": "isaaclab_rl/rsl_rl/exporter.py",
+    "sha256": "d8e44dc5fda3fb6b135a7cf56c76338678103aac314851d59ad5399975a00e04"
+  },
+  "versions": {
+    "torch": "2.7.0+cu128",
+    "onnx": "1.19.0",
+    "onnxruntime": "1.23.1"
+  },
+  "validation": {
+    "samples": 385,
+    "seed": 42,
+    "max_absolute_error": {
+      "torchscript": 0.0,
+      "onnx": 0.0001685619354248047
+    },
+    "rtol": 1e-05,
+    "atol": 0.0002
+  },
+  "validation_scope": "CPU export equivalence; separate final native Isaac Lab evaluation; no real-robot validation",
+  "files_sha256": {
+    "model_9998.pt": "85a13a13d35bd2ec7ff1eb5a1a25aaa3640668a5918bdac4072774a7b097c46a",
+    "policy.pt": "6040f8d590ea2fc3673ccc82d2ab60c154854d23fe7d0cca6e636b6d441f4746",
+    "policy.onnx": "ab75d10ff515fb234cf4750299de4fc263191ed6b61d5d8d1fdac7de8afd1d71",
+    "params/agent.yaml": "182992edaa70665569e95d9668a0976a3fc64c32318d8e1c339b983a0992749f",
+    "params/env.yaml.gz": "adedc28aa545955d4f06a4643167585b5118085fd04562ad63b10ba587fe26ba",
+    "params/source_files_sha256.json": "d2f1a08fb8282b297dc3be57c7f66b0a898dcdb71bbaa16abf44228db9d16214",
+    "training_provenance.json": "5d41967196543ce0a55fe446e49dd4cae7a6dcaf71437f14116916fb34bd8d1c"
+  }
+}
