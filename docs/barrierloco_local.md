@@ -2,6 +2,9 @@
 
 更新日期：2026-10-10。工作目录 `/home/joey/BarrierLoco`；本地分支 `barrierloco-unified`。
 
+2026-10-11 更新：Multiskill 默认已切换为完整迁入的 V1 课程版，使用本地80k最终权重与连续指令演示。
+当前启动、录屏与训练方式以 [V1整合说明](multiskill_v1.md) 为准；中间训练及测试结果已清理。
+
 ## 已整合来源
 
 来源仓库 `shang13206/OmniBot`：
@@ -26,106 +29,14 @@
 
 ## 日常使用
 
-### 当前实验：仅扩展多步态前后速度
-
-2026-10-10：Gait 任务的 `commands.base_velocity.lin_vel_x` 从 `(-1, 1)` 改为
-`(-5, 5)` m/s，训练和 Play 配置均继承该覆盖。其余指令、地形、奖励、动力学和 PPO 参数保持不变。
-这使用现有均匀采样，不增加速度课程，不承诺全范围跟踪；HighPlatform 仍为向前 `0.5–1.0` m/s
-（Play 为 `1.0` m/s），Jump 不改动。
-
-2026-10-10 18:11 已启动 Gait 修改版从零训练：4096 环境、5000 次迭代、seed 42、
-TensorBoard、cuda:0，每 500 次保存模型。实验目录为 `locolab/logs/rsl_rl/barrierloco_gait_vx5/`。
-启动记录、源码快照、控制台日志和退出码位于 `logs/setup/gait_vx5/train_20261010-181141/`；
-`exit_code` 在进程退出时生成，0 表示正常退出。1024 和 4096 环境均已完成 10 次迭代短测。
-
-随仓库附带的 Gait 权重仍是在 `(-1, 1)` m/s 上训练的，不能当作扩展版模型。
-回放作者模型时显式恢复其指令范围：
+Multiskill仅保留最终80k模型，默认回放/录屏/verify均指向`deploy/policy/go2w/multiskill_scratch80k/`。
+默认训练从随机权重开始。完整命令见[Multiskill使用说明](multiskill_v1.md)，参数和两阶段复现见[正式实验记录](experiments/2026-10-12_multiskill_scratch80k/README.md)。
 
 ```bash
-./scripts/skill.sh multiskill play 'env.commands.base_velocity.lin_vel_x=[-1.0,1.0]'
-```
-
-后续训练扩展版时，可用 `--run_name gait_vx5` 标识实验，避免与原版记录混淆。
-HighPlatform 的原流程需要 Rough 预训练 checkpoint，再续训高台；当前打包的是高台最终权重，
-不能将它作为 Rough 基座。完整重新训练前需取得原 Rough checkpoint，或先重新训练 Rough 基座。
-下文“统一后验证”的零差异结论描述的是本次速度修改之前的版本。
-
-```bash
-cd /home/joey/BarrierLoco
 ./scripts/skill.sh multiskill play
 ./scripts/skill.sh highplatform play
 ./scripts/skill.sh omnijump play
-
-# 无窗口回放/录像，结束后自动退出
-./scripts/skill.sh omnijump play --headless --video --video_duration_s 6
-
-# 从零训练调试，日志使用 TensorBoard
-./scripts/skill.sh highplatform train --headless --num_envs 64 --max_iterations 100
-./scripts/skill.sh multiskill train --headless --num_envs 64 --max_iterations 100
-./scripts/skill.sh omnijump train --headless --num_envs 64 --max_iterations 100
-
-# 标准脚本方式；--task 可直接换成另外两个任务
-source /home/joey/miniconda3/etc/profile.d/conda.sh
-conda activate env_isaaclab
-python locolab/scripts/locomotion/train.py \
-  --task OmniBot-Go2W-Gait-Flat-MLP-v0 \
-  --headless --num_envs 64 --max_iterations 100 --logger tensorboard
-
-tensorboard --logdir /home/joey/BarrierLoco/locolab/logs/rsl_rl
 ```
-
-每次启动一个 GPU 任务。训练日志统一位于 `locolab/logs/rsl_rl/<experiment>/<run>/`。
-自己的模型通过 `play --checkpoint /absolute/path/model.pt` 指定，并选择与训练一致的技能。
-回放导出到 checkpoint 同目录 `exported/`，视频到 `videos/play/`。
-
-## 技能与模型
-
-### 当前模型追加 50000 次训练
-
-用户选择从 `2026-10-10_18-11-47_scratch_4096_seed42/model_4999.pt` 继续，
-不是从零开始，也不是只补到总计 50000 次。保持 4096 环境、seed 42、原 PPO 参数及 vx±5 范围，
-恢复 actor、critic 和 optimizer；每 500 次保存 checkpoint。新实验目录与首轮分开。
-
-```bash
-./scripts/skill.sh multiskill train --headless --device cuda:0 --num_envs 4096 \
-  --max_iterations 50000 --seed 42 --resume \
-  --resume_experiment_name barrierloco_gait_vx5 \
-  --load_run 2026-10-10_18-11-47_scratch_4096_seed42 --checkpoint model_4999.pt \
-  --experiment_name barrierloco_gait_vx5_continue50k --run_name resume4999_4096_seed42
-```
-
-当前 runner 从 checkpoint 的迭代标签 4999 开始循环，追加 50000 次更新后最终文件标签为 54998。
-这是现有编号方式；两轮实际共执行 55000 次更新。首轮 5000 次耗时 1:20:57，
-线性估算追加训练为 13:29:30，实际耗时取决于仿真运行速度。时间加长不保证收敛。
-
-### 实时全向速度检查
-
-```bash
-./scripts/skill.sh multiskill play --checkpoint /absolute/path/model_4999.pt \
-  --device cuda:0 --real-time --follow-camera --velocity-sweep --live-plot
-```
-
-相机跟随机器人；Isaac Sim 内部右侧 Velocity Tracking 面板显示机身坐标系下的 vx、vy（m/s）及 wz（rad/s）的曲线和实时数值，橙线为
-实际发送给策略的 command，蓝线为仿真测量值。数据保存为 checkpoint 同目录的
-`velocity_live_<时间>.csv`。CSV 在重置处留空；面板在工况切换或自动重置时清空曲线，并累计显示自动重置次数。
-
-rolling、trot、bound 各检查 31 个工况，共 93 个：静止、vx=±0.5/1/2/3/4/5、
-vy=±0.25/0.5、四个斜向组合、wz=±0.5/1.5/3，以及前后运动配合左右转向。
-每工况默认 6 秒（`--sweep-seconds` 可调整），完整循环 558 秒；每个新工况重置环境，
-固定高度 0.34 m、频率 2.5 Hz、运动步态摆动高度 0.06 m，不改变训练配置。
-本回放用于观察响应，不是经过稳定时间筛选的成功率评测。
-
-| 技能名 | Task ID | 默认 checkpoint |
-|---|---|---|
-| multiskill | `OmniBot-Go2W-Gait-Flat-MLP-v0` | `deploy/policy/go2w/gait_wtw_height50_20260920/model_4999.pt` |
-| highplatform | `OmniBot-Go2W-HighPlatform-MLP-v0` | `deploy/policy/go2w/highplatform_rough_mlp_20260922/model_9998.pt` |
-| omnijump | `OmniBot-Go2W-Jump-MLP-v0` | `deploy/policy/go2w/jump_smooth_mlp_20261009/model_9998.pt` |
-
-三个模型均已完整下载，ONNX/TorchScript 与原始参数在同目录。
-Jump 第一阶段 `model_4999.pt` 同时保留。
-Gait 提供 rolling/trot/bound、机身高度、频率、相位、占空比、摆动高度控制；没有独立 roll/pitch command。
-高台为直线爬台；新版 Jump 是行进中触发跳跃，采用 2.2 秒时钟和 speed 阶段航向锁定。
-这三者仍为独立网络，通过启动参数切换任务，不涉及一次仿真过程中自动交接策略。
 
 ## Jump 两阶段
 

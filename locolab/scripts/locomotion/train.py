@@ -60,6 +60,10 @@ parser.add_argument(
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, choices=tasks, help="Name of the task.")
+parser.add_argument("--init_checkpoint", help="Initialize policy weights with a fresh optimizer and curriculum clock.")
+parser.add_argument("--from-scratch", action="store_true", help="Start with random weights; forbid checkpoint loading.")
+parser.add_argument("--highplatform-pretrain", action="store_true", help="Use native HighPlatform leg limits for Rough pretraining.")
+parser.add_argument("--validate-finite", action="store_true", help="Reject non-finite training data.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
 parser.add_argument(
@@ -85,6 +89,14 @@ cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 argcomplete.autocomplete(parser)
 args_cli, hydra_args = parser.parse_known_args()
+if args_cli.highplatform_pretrain and args_cli.task != "OmniBot-Go2W-Rough-MLP-v0":
+    parser.error("--highplatform-pretrain requires OmniBot-Go2W-Rough-MLP-v0")
+if args_cli.from_scratch and (args_cli.resume or args_cli.init_checkpoint or args_cli.warm_start_rough or args_cli.checkpoint):
+    parser.error("--from-scratch cannot be combined with checkpoint initialization or resume")
+if args_cli.init_checkpoint and (args_cli.resume or args_cli.warm_start_rough or args_cli.jump_stage):
+    parser.error("--init_checkpoint cannot be combined with resume, Rough warm start, or jump stages")
+if args_cli.init_checkpoint and not pathlib.Path(args_cli.init_checkpoint).is_file():
+    parser.error("--init_checkpoint does not exist")
 if args_cli.jump_stage and args_cli.task != "OmniBot-Go2W-Jump-MLP-v0":
     parser.error("jump_stage requires OmniBot-Go2W-Jump-MLP-v0")
 if args_cli.jump_stage == "skill" and (args_cli.resume or args_cli.warm_start_rough):
@@ -172,6 +184,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     """Train with RSL-RL agent."""
     # override configurations with non-hydra CLI arguments
     agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
+    if args_cli.highplatform_pretrain:
+        # Keep both stages on the author's native dynamics. Do not change shared Rough defaults.
+        env_cfg.scene.robot.actuators["legs"].effort_limit_sim = 23.5
+        env_cfg.scene.robot.actuators["legs"].velocity_limit_sim = 30.0
+    if args_cli.from_scratch and (agent_cfg.resume or agent_cfg.algorithm.class_name != "PPO"):
+        raise ValueError("--from-scratch requires PPO with resume disabled.")
     if args_cli.jump_stage:
         from locolab.source.locomotion.tasks.Go2W.jump_env_cfg import apply_jump_training_stage
 
@@ -236,7 +254,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # save resume path before creating a new log_dir
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
-        resume_path = get_checkpoint_path(resume_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
+        # V1 accepts a concrete checkpoint as well as the existing run/name patterns.
+        if os.path.isfile(agent_cfg.load_checkpoint):
+            resume_path = os.path.abspath(agent_cfg.load_checkpoint)
+        else:
+            resume_path = get_checkpoint_path(resume_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
 
     video_dir = None
     video_fps = None
@@ -265,9 +287,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
     # create runner from rsl-rl
-    runner = OnPolicyRunner(
+    from rsl_rl.runners.gait_curriculum_runner import GaitCurriculumRunner
+
+    runner_type = GaitCurriculumRunner if agent_cfg.class_name == "GaitCurriculumRunner" else OnPolicyRunner
+    runner = runner_type(
         env,
-        cli_args.runner_cfg_to_dict(agent_cfg, validate_finite=args_cli.smoke_marker),
+        cli_args.runner_cfg_to_dict(agent_cfg, validate_finite=args_cli.smoke_marker or args_cli.validate_finite),
         log_dir=log_dir,
         device=agent_cfg.device,
     )
@@ -294,12 +319,27 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         # load previously trained model
         runner.load(resume_path)
 
+    elif args_cli.init_checkpoint:
+        # V1 reproduction: load actor/critic/noise, not Adam state or iteration count.
+        runner.load(args_cli.init_checkpoint, load_optimizer=False, map_location=agent_cfg.device)
+        runner.current_learning_iteration = 0
+
     # dump the configuration into log-directory
     if is_primary:
+        # Save explicit provenance: agent.yaml alone does not record --init_checkpoint.
+        dump_yaml(os.path.join(log_dir, "params", "initialization.yaml"), {
+            "mode": "resume" if agent_cfg.resume else (
+                "initialize" if args_cli.init_checkpoint or args_cli.warm_start_rough else "random"
+            ),
+            "checkpoint": resume_path if agent_cfg.resume else (args_cli.init_checkpoint or args_cli.warm_start_rough),
+            "explicit_from_scratch": args_cli.from_scratch,
+        })
         dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
         dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
 
     # run training
+    if args_cli.from_scratch:
+        print("[INFO] FROM_SCRATCH: random actor/critic/noise initialization; no checkpoint loaded.", flush=True)
     runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
 
     if args_cli.smoke_marker and args_cli.distributed:

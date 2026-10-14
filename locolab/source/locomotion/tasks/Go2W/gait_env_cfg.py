@@ -78,10 +78,7 @@ class Go2WGaitEnvCfg(Go2WFlatEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        # BarrierLoco velocity-range experiment; bundled weights were trained at +/-1 m/s.
-        # Only widen body-frame vx: keep vy/yaw, reward shaping and dynamics unchanged.
-        # This is uniform sampling, not a curriculum or a guarantee of achievable speed.
-        self.commands.base_velocity.lin_vel_x = (-5.0, 5.0)
+        # Original +/-1 baseline; the V1-derived task owns gradual range expansion.
         # Preserve the bundled Gait checkpoint's training dynamics.
         self.scene.robot.actuators["legs"].effort_limit_sim = 23.5
         self.scene.robot.actuators["legs"].velocity_limit_sim = 30.0

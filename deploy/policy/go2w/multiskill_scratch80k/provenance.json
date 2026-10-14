@@ -1,0 +1,14 @@
+{
+  "task": "OmniBot-Go2W-Gait-Curriculum-Flat-MLP-v0",
+  "checkpoint": "model_79999.pt",
+  "sha256": "2133340f4cd89853140a17941f8033b8c432ac5c1738774337e40a10175d1d00",
+  "initialization": "random -> 30000 updates -> optimizer-preserving 50000 updates",
+  "iterations": 80000,
+  "parent_checkpoint_sha256": "fc83d10afd178cba5c1b0b5c333d92555d32508032f6d9d93f74ea919e951308",
+  "parent_checkpoint_retained": false,
+  "actor_input": 64,
+  "critic_input": 318,
+  "actions": 16,
+  "network": "MLP 512/256/128 ELU",
+  "source_git_head": "29af35dbbeb8c069fd13668c34719a795dc39674"
+}

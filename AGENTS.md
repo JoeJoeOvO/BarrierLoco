@@ -30,4 +30,10 @@ Recent history follows Conventional Commit style such as `feat(deploy): ...`, `r
 
 ## Environment Notes
 
-Use the `robot_lab` Conda environment for training and ONNX validation: `/home/shang_sun/miniconda3/envs/robot_lab/bin/python`. Keep generated policies under `deploy/policy/<robot>/<config>/policy.onnx`, and keep policy observation ordering aligned with the training task before testing deployment.
+Use the user's `env_isaaclab` Conda environment for this workspace: `/home/joey/miniconda3/envs/env_isaaclab/bin/python`. Use `scripts/skill.sh` to select multiskill, highplatform, or omnijump in the unified root repository. Keep generated policies under `deploy/policy/<robot>/<config>/policy.onnx`, and keep policy observation ordering aligned with the training task before testing deployment.
+
+Gait, HighPlatform and Jump retain their bundled checkpoints' task-local leg limits (23.5 Nm / 30 rad/s). Gait disables self-collision; HighPlatform and Jump enable it. Do not remove these overrides when updating the shared robot asset. After changing skill dynamics, run `scripts/skill.sh multiskill python tests/smoke_unified_skill_dynamics.py --headless` in addition to relevant tests.
+
+## Experiment Records
+
+Create a formal Markdown experiment record under `docs/experiments/` only after a complete pipeline has successfully achieved the intended task outcome, using `TEMPLATE.md` and updating the index. Do not create or append formal records for intermediate training stages, preflight checks, failed attempts, or stops. A zero exit code alone is not task success. Keep raw logs, checkpoints, configs, and machine-readable job status for debugging throughout development. Once successful, document the final reproducible pipeline: code provenance and changes, exact task/config/seed, checkpoint lineage, iteration counts, reproduction commands, artifact hashes, validation scope, and remaining limitations. Do not claim a concern is fixed without evidence. Keep the pipeline independent of the original BarrierPlanner directory and note large artifacts requiring separate backup.

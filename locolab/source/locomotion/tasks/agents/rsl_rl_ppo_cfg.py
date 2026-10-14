@@ -185,6 +185,17 @@ class Go2WGaitMLPPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
 
 
 @configclass
+class Go2WGaitCurriculumPPORunnerCfg(Go2WGaitMLPPPORunnerCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.class_name = "GaitCurriculumRunner"
+        self.experiment_name = "omnibot_go2w_gait_curriculum_vx5_swing15"
+        self.max_iterations = 30000
+        self.save_interval = 500
+        self.algorithm.learning_rate = 3.0e-4
+
+
+@configclass
 class Go2WJumpMLPPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
     def __post_init__(self) -> None:
         super().__post_init__()

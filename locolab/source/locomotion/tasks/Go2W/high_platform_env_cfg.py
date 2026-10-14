@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import math
 
+import isaaclab.sim as sim_utils
 import isaaclab.terrains as terrain_gen
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
@@ -133,6 +134,10 @@ class Go2WHighPlatformEnvCfg(Go2WRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.episode_length_s = 10.0
+        # Preserve the bundled HighPlatform checkpoint's training dynamics.
+        self.scene.robot.actuators["legs"].effort_limit_sim = 23.5
+        self.scene.robot.actuators["legs"].velocity_limit_sim = 30.0
+        self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
         self.events.reset_base.params["pose_range"] = {
             "x": (-0.5, 0.5),
             "y": (-0.5, 0.5),
@@ -149,6 +154,16 @@ class Go2WHighPlatformPlayEnvCfg(Go2WHighPlatformEnvCfg):
         self.scene.num_envs = 1
         self.scene.terrain.terrain_generator = copy.deepcopy(GO2W_HIGH_PLATFORM_PLAY_TERRAIN_CFG)
         self.scene.terrain.max_init_terrain_level = 0
+        # Offline playback: remote MDL/HDR resources can render the course black.
+        # Only appearance changes; collision geometry and friction stay identical.
+        self.scene.terrain.visual_material = sim_utils.PreviewSurfaceCfg(
+            diffuse_color=(0.62, 0.66, 0.70),
+            roughness=0.85,
+        )
+        self.scene.sky_light.spawn = sim_utils.DomeLightCfg(
+            color=(1.0, 1.0, 1.0),
+            intensity=300.0,
+        )
         self.episode_length_s = 30.0
 
         command_ranges = self.commands.base_velocity.ranges

@@ -118,6 +118,9 @@ def test_training_keeps_rough_interfaces_and_randomization():
     }
     assert overrides == {
         "self.episode_length_s": 10.0,
+        "self.scene.robot.actuators['legs'].effort_limit_sim": 23.5,
+        "self.scene.robot.actuators['legs'].velocity_limit_sim": 30.0,
+        "self.scene.robot.spawn.articulation_props.enabled_self_collisions": True,
         "self.events.reset_base.params['pose_range']": {
             "x": (-0.5, 0.5),
             "y": (-0.5, 0.5),

@@ -5,6 +5,7 @@ import math
 from isaaclab.managers import CommandTermCfg
 from isaaclab.utils import configclass
 
+from ..wtw_curriculum import DEFAULT_SCHEDULE
 from .wtw_command import WTWCommand
 
 
@@ -33,6 +34,9 @@ class WTWCommandCfg(CommandTermCfg):
     max_pair_phase_error_deg: float = 10.0
     gait_duration: float = 0.5
     footswing_height: tuple[float, float] = (0.0, 0.10)
+    curriculum_enabled: bool = False
+    curriculum_steps_per_iteration: int = 24
+    curriculum_schedule: tuple = DEFAULT_SCHEDULE
     kappa: float = 0.07
     # From Go2W URDF cylinder collision geometry in FR, FL, RR, RL order.
     wheel_radius: float = 0.086

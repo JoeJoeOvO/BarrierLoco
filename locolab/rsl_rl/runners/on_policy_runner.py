@@ -178,6 +178,9 @@ class OnPolicyRunner:
         self.logger.save_model(path, self.current_learning_iteration)
 
     def load(self, path: str, load_optimizer: bool = True, map_location: str | None = None) -> dict:
+        # Checkpoints can originate from another machine or GPU index.
+        if map_location is None:
+            map_location = self.device
         loaded_dict = torch.load(path, weights_only=False, map_location=map_location)
         # Load model
         resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"], strict=True)

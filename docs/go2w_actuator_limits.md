@@ -1,5 +1,9 @@
 # Go2W actuator model limits
 
+Unified BarrierLoco note: Gait and HighPlatform explicitly retain the bundled
+checkpoints' 23.5 Nm / 30 rad/s leg limits, as Jump already does. Their task-local
+overrides do not change the common asset or deployment limits documented below.
+
 The common Isaac Lab asset, deployment torque caps and MuJoCo
 actuators use user-selected conservative rounding of the per-joint limits in the
 [official Go2-W URDF](https://github.com/unitreerobotics/unitree_ros/blob/5994d4faef0a9cadd3287f8de0199a67eeb2a259/robots/go2w_description/urdf/go2w_description.urdf).

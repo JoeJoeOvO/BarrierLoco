@@ -1,0 +1,49 @@
+{
+  "git_head": "29af35dbbeb8c069fd13668c34719a795dc39674",
+  "original_ref": "9abf47ed67a317194515c99df7ccacd518a11e4a",
+  "versions": {
+    "python": "3.10.20",
+    "torch": "2.7.0+cu128",
+    "isaaclab": "0.54.3",
+    "isaacsim": "4.5.0.0"
+  },
+  "rough_checkpoint": {
+    "path": "/home/joey/BarrierLoco/locolab/logs/rsl_rl/barrierloco_rough_two_stage_20261013-123245-15k/2026-10-13_12-32-51_rough_1024_seed42_15000iter/model_14999.pt",
+    "sha256": "a1951e6e973adb05ff11a858e3545f0696df37f2b98ee6deb2c0d569bdd03eeb",
+    "bundled_path": "deploy/policy/go2w/highplatform_rough15k_batch196608/model_14999.pt"
+  },
+  "final_checkpoint": {
+    "path": "/home/joey/BarrierLoco/locolab/logs/rsl_rl/barrierloco_highplatform_20261013-225424-env4096-batch196608/2026-10-13_22-54-31_highplatform_4096_steps48_5k/model_19998.pt",
+    "sha256": "50ee180ef49594cdd992e91156e094cfb9b84edfc121df5151238d44bbfe7998",
+    "bundled_path": "deploy/policy/go2w/highplatform_rough15k_batch196608/model_19998.pt"
+  },
+  "highplatform_job": "/home/joey/BarrierLoco/logs/setup/highplatform_pipeline/20261013-225424-env4096-batch196608",
+  "source_snapshot": {
+    "path": "/home/joey/BarrierLoco/logs/setup/highplatform_pipeline/20261013-225424-env4096-batch196608/training_source.tar.gz",
+    "sha256": "86006c0ec7ef98d87b5ebe048df0ed8738ac77799459861f5a0893033ed197af"
+  },
+  "patch": {
+    "path": "/home/joey/BarrierLoco/logs/setup/highplatform_pipeline/20261013-225424-env4096-batch196608/working_tree.patch",
+    "sha256": "6d2fdc7207feb4ef9c7bb28f00e8a92cee0dc18ab4b3e8708a3fdb253ac39a49"
+  },
+  "evaluations": [
+    {
+      "iteration": 15500,
+      "passed": 256,
+      "attempts": 256,
+      "output": "/home/joey/BarrierLoco/logs/setup/highplatform_pipeline/20261013-225424-env4096-batch196608/evaluation_15500"
+    },
+    {
+      "iteration": 16000,
+      "passed": 256,
+      "attempts": 256,
+      "output": "/home/joey/BarrierLoco/logs/setup/highplatform_pipeline/20261013-225424-env4096-batch196608/evaluation_16000"
+    },
+    {
+      "iteration": 19998,
+      "passed": 256,
+      "attempts": 256,
+      "output": "/home/joey/BarrierLoco/logs/setup/highplatform_pipeline/20261013-225424-env4096-batch196608/evaluation_19998"
+    }
+  ]
+}

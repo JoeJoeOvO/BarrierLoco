@@ -28,6 +28,16 @@ wandb/
 .neptune/
 runs/
 recordings/
+velocity_live_*.csv
+
+# Local diagnostic runs; successful experiment records live in docs/experiments.
+/artifacts/go2w_highplatform/audit_*/
+/artifacts/go2w_highplatform/author_recheck_*/
+/artifacts/go2w_highplatform/diagnostic_*/
+/artifacts/go2w_highplatform/intermediate_notes_*/
+/artifacts/go2w_highplatform/local_baseline_*/
+/artifacts/go2w_highplatform/local_two_stage_*/
+/artifacts/go2w_highplatform/preflight_*/
 
 # Isaac Sim
 *.usda

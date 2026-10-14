@@ -1,0 +1,62 @@
+{
+  "task": "OmniBot-Go2W-Gait-Curriculum-Flat-MLP-v0",
+  "source_host": "local",
+  "source_checkpoint": "model_79999.pt",
+  "source_config_sha256": {
+    "model_79999.pt": "2133340f4cd89853140a17941f8033b8c432ac5c1738774337e40a10175d1d00",
+    "params/agent.yaml": "92e79c7f50284ab2a30f331d75de9b175f0aeee1c1b7a0f16bbb235e66e59ceb",
+    "params/env.yaml": "6c4042a80e170d9e2348af585bc6b6148da7c1ef27a9cdfbd48e147805629094"
+  },
+  "iteration": 79999,
+  "training_iterations": 80000,
+  "actor_observations": 64,
+  "critic_observations": 318,
+  "actions": 16,
+  "actor_hidden_dims": [
+    512,
+    256,
+    128
+  ],
+  "activation": "elu",
+  "deterministic_mean_actions": true,
+  "observation_normalization": false,
+  "onnx_interface": {
+    "input": "obs",
+    "input_shape": [
+      1,
+      64
+    ],
+    "output": "actions",
+    "output_shape": [
+      1,
+      16
+    ]
+  },
+  "exporter": {
+    "implementation": "isaaclab_rl/rsl_rl/exporter.py",
+    "sha256": "9f58909058b969923921d1ea052f912eb1ae3f7ecbe3d947164c06b584737e16"
+  },
+  "versions": {
+    "torch": "2.7.0+cu128",
+    "onnx": "1.21.0",
+    "onnxruntime": "1.23.2"
+  },
+  "validation": {
+    "samples": 385,
+    "seed": 42,
+    "max_absolute_error": {
+      "torchscript": 0.0,
+      "onnx": 0.0006103515625
+    },
+    "rtol": 1e-05,
+    "atol": 0.001
+  },
+  "validation_scope": "CPU numerical equivalence; no new simulator or real-robot evaluation",
+  "files_sha256": {
+    "model_79999.pt": "2133340f4cd89853140a17941f8033b8c432ac5c1738774337e40a10175d1d00",
+    "policy.pt": "7923fa1858a1d45998af88d7a74bf0126c5443e38a72854571571bcc1a4e5289",
+    "policy.onnx": "b09461f7be51941ff6c6c7aedb8829f442d09f0c3e1609a05ba707f836158c97",
+    "params/agent.yaml": "92e79c7f50284ab2a30f331d75de9b175f0aeee1c1b7a0f16bbb235e66e59ceb",
+    "params/env.yaml": "6c4042a80e170d9e2348af585bc6b6148da7c1ef27a9cdfbd48e147805629094"
+  }
+}

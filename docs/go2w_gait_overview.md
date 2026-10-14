@@ -71,27 +71,10 @@
 外部全支撑 `frequency=0` 的兼容输入、关闭 reward IK 的配置开关仍有测试覆盖，
 属于保留的接口能力，不是废弃训练路径。
 
-## 已完成的训练和效果
+## 保留的最终结果
 
-最新训练：`2026-09-20_01-10-58_multi_skill_wtw_height50_rewardik_phase5_rollclock0_4096_remote_gpu4_5k_video`。
-服务器 GPU 4，4096 环境，从零训练 5000 次，最终模型 `model_4999.pt`；W&B 和训练视频已启用。
-
-- [最新 W&B](https://wandb.ai/ssh45441-xi-an-jiaotong-university-/omnibot-go2w/runs/nhfgmyxj)
-- [最终 checkpoint、ONNX / TorchScript 网络与使用说明](../deploy/policy/go2w/gait_wtw_height50_20260920/README.md)
-- [最新 72 秒回放及完整数据](../artifacts/go2w_multi_skill/20260920_height50_showcase/README.md)
-- [此前高度权重 -10 的对比回放](../artifacts/go2w_multi_skill/20260919_phase5_showcase/README.md)
-- [保留产物与清理记录](../artifacts/go2w_multi_skill/README.md)
-
-两轮采用同一展示协议：0.6 m/s，频率 2.5 Hz，标准相位，三种步态各展示 34/22/46 cm。
-最新视频 72 秒、3600 帧，九段均无自动重置。目标 22 cm 时的实际平均高度：
-
-| 步态 | 前一轮 | 最新 |
-|---|---|---|
-| trot | 35.7 cm | 26.3 cm |
-| bound | 34.6 cm | 24.8 cm |
-| rolling | 28.8 cm | 22.2 cm |
-
-低、中高度误差减小，但低高度 trot/bound 仍偏高。这是有限回放，不是全范围鲁棒性或实机验证。
+本地从零30k后续训50k，累计80k；仅保留`deploy/policy/go2w/multiskill_scratch80k/`中的最终checkpoint与导出网络。
+旧作者/V1权重及中间回放、训练结果已清理。参见[正式实验记录](experiments/2026-10-12_multiskill_scratch80k/README.md)和[当前入口](multiskill_v1.md)。
 
 ## 验证与尚未开发的部分
 
@@ -103,10 +86,3 @@ rolling 时钟屏蔽、指令切换、奖励索引，以及 IK 不进入动作/�
 
 尚未实现：WTW 原始 RMA/步态网格课程、该 10 维接口的 sim2sim/实机部署适配、全速度/相位范围评估、
 连续步态/高度切换稳定性专项评估。本任务并非原始 Go1 方法的完整复现。
-
-## 分支和清理范围
-
-开发分支为 `codex/multi-skill`，步态功能基于 `bdc66cd` 开发；本次任务更名不修改分支名。
-步态功能与文档单独提交；工作区中的通用视频修复、开发规范以及 rough 模型/评估产物不属于该功能。
-
-本次只删除明确废弃的本地中间产物；最终/基线视频、逐帧数据、来源记录、当前启动脚本和全部服务器模型保留。

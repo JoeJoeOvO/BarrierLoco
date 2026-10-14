@@ -16,14 +16,16 @@ GRID = 0xFF42382C
 
 
 class VelocityPanel:
-    def __init__(self):
-        self.window = ui.Window("Velocity Tracking", width=430, height=440)
+    def __init__(self, window=None, frame=None):
+        # Embed in the V1 command inspector, or retain the standalone play panel.
+        self.owns_window = window is None
+        self.window = window or ui.Window("Velocity Tracking", width=430, height=440)
         self.history = [[deque(maxlen=250), deque(maxlen=250)] for _ in range(3)]
         self.plots = []
         self.values = []
         self.ticks = []
         self.last_update = -1.0
-        with self.window.frame:
+        with (frame if frame is not None else self.window.frame):
             with ui.ScrollingFrame(horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF):
                 with ui.VStack(spacing=3, height=0):
                     ui.Label("VELOCITY TRACKING", height=20, style={"color": TEXT, "font_size": 16})
@@ -116,4 +118,5 @@ class VelocityPanel:
 
     def close(self):
         self.docking.cancel()
-        self.window.destroy()
+        if self.owns_window:
+            self.window.destroy()

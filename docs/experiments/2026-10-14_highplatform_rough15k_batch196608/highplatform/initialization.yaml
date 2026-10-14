@@ -1,0 +1,3 @@
+mode: resume
+checkpoint: /home/joey/BarrierLoco/locolab/logs/rsl_rl/barrierloco_rough_two_stage_20261013-123245-15k/2026-10-13_12-32-51_rough_1024_seed42_15000iter/model_14999.pt
+explicit_from_scratch: false

@@ -1,0 +1,3 @@
+mode: random
+checkpoint: null
+explicit_from_scratch: true

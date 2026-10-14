@@ -1,0 +1,582 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index f0bee4d..cb2ae61 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -30,4 +30,6 @@ Recent history follows Conventional Commit style such as `feat(deploy): ...`, `r
+ 
+ ## Environment Notes
+ 
+-Use the `robot_lab` Conda environment for training and ONNX validation: `/home/shang_sun/miniconda3/envs/robot_lab/bin/python`. Keep generated policies under `deploy/policy/<robot>/<config>/policy.onnx`, and keep policy observation ordering aligned with the training task before testing deployment.
++Use the user's `env_isaaclab` Conda environment for this workspace: `/home/joey/miniconda3/envs/env_isaaclab/bin/python`. Use `scripts/skill.sh` to select multiskill, highplatform, or omnijump in the unified root repository. Keep generated policies under `deploy/policy/<robot>/<config>/policy.onnx`, and keep policy observation ordering aligned with the training task before testing deployment.
++
++Gait, HighPlatform and Jump retain their bundled checkpoints' task-local leg limits (23.5 Nm / 30 rad/s). Gait disables self-collision; HighPlatform and Jump enable it. Do not remove these overrides when updating the shared robot asset. After changing skill dynamics, run `scripts/skill.sh multiskill python tests/smoke_unified_skill_dynamics.py --headless` in addition to relevant tests.
+diff --git a/README.md b/README.md
+index 7303e20..cecf995 100644
+--- a/README.md
++++ b/README.md
+@@ -1,117 +1,62 @@
+-# OmniBot
++# BarrierLoco
+ 
+-轮足机器人全栈开发框架，涵盖训练、仿真验证、实机部署。
+-
+-## 项目结构
+-
+-```
+-OmniBot/
+-├── locolab/        # 基于 Isaac Lab 的强化学习训练
+-├── simulation/     # 基于 MuJoCo 的 Sim2Sim 仿真验证
+-└── deploy/         # Sim2Real 实机部署
+-```
+-
+-## 模块说明
+-
+-### locolab
+-
+-基于 Isaac Lab 的机器人运动控制训练框架，使用 PPO 算法训练轮足机器人的运动策略。
+-
+-- 支持 Go2W 轮足机器人（腿部位置控制 + 轮子速度控制）
+-- 平地/复杂地形速度跟踪任务
+-- RSL-RL 强化学习库
+-- 课程学习支持
+-
+-详见 [locolab/README.md](locolab/README.md)
+-
+-### simulation
+-
+-基于 MuJoCo 的 Sim2Sim 仿真验证，用于在部署前验证训练好的策略。
+-
+-- 轻量级仿真环境
+-- 策略迁移验证
+-- 性能分析
+-
+-### deploy
+-
+-Sim2Real 实机部署模块，将训练好的策略部署到真实机器人。
+-
+-- 实时控制接口
+-- 硬件通信
+-- 安全保护
++基于 Isaac Lab 的 Go2W 三技能统一仓库：多步态、高台、跳跃。
++全部任务共用 `locolab/` 的训练与回放框架，通过 task 或技能名选择，各自保留训练配置和模型权重。
+ 
+ ## 快速开始
+ 
+-### 1. 训练
++使用本机已有 `env_isaaclab`，无需手动激活环境：
+ 
+ ```bash
+-cd locolab
+-pip install -e .
++cd /home/joey/BarrierLoco
+ 
+-# Go2W 平地训练
+-python scripts/locomotion/train.py --task=OmniBot-Go2W-Flat-v0 --num_envs=4096
++# 每次启动一个技能的窗口回放，默认载入该技能已训练的最终模型
++./scripts/skill.sh multiskill play
++./scripts/skill.sh highplatform play
++./scripts/skill.sh omnijump play
+ 
+-# Go2W 复杂地形训练
+-python scripts/locomotion/train.py --task=OmniBot-Go2W-Rough-v0 --num_envs=4096
+-```
+-
+-### 2. Sim2Sim 验证
++# 小规模无窗口训练；技能名可替换
++./scripts/skill.sh multiskill train --headless --num_envs 64 --max_iterations 100
+ 
+-```bash
+-cd simulation
+-# TODO: 添加仿真验证脚本
++# 查看注册任务
++./scripts/skill.sh multiskill list
+ ```
+ 
+-### 3. 实机部署
+-
+-```bash
+-cd deploy
+-# TODO: 添加部署脚本
+-```
++| 技能 | Task ID | 模型目录（deploy/policy/go2w 下） |
++|---|---|---|
++| 多步态、高度控制（V1课程版） | `OmniBot-Go2W-Gait-Curriculum-Flat-MLP-v0` | `gait_curriculum_v1` |
++| 高台 | `OmniBot-Go2W-HighPlatform-MLP-v0` | `highplatform_rough_mlp_20260922` |
++| 跳跃 | `OmniBot-Go2W-Jump-MLP-v0` | `jump_smooth_mlp_20261009` |
+ 
+-## 环境要求
++`skill.sh` 默认使用 `/home/joey/miniconda3/envs/env_isaaclab/bin/python`，可通过 `BARRIERLOCO_PYTHON` 覆盖。
++Multiskill 默认从作者权重开始，1024 环境、30000 次课程训练；其余技能默认 64 环境。
++训练使用本地 TensorBoard；回放默认 1 环境。Multiskill 的 play/sweep 使用 V1 连续 cmd 演示和右侧面板。
++V1 代码、模型、录屏程序已完整收纳在当前仓库，运行不依赖原 BarrierPlanner 目录。
++详细命令见 [V1整合说明](docs/multiskill_v1.md)。
++Jump 训练默认 skill 第一阶段，最终模型回放默认 speed 第二阶段语义。
+ 
+-- Isaac Sim 4.5+ / Isaac Lab 2.0+
+-- MuJoCo 3.x
+-- Python 3.10+
+-- PyTorch 2.x
+-- CUDA 12.x
++## 代码结构
+ 
+-## 开发规范
++- `locolab/scripts/locomotion/`：统一训练、回放和评估入口。
++- `locolab/source/locomotion/tasks/Go2W/`：各技能环境、指令和奖励配置。
++- `locolab/source/locomotion/mdp/`：奖励、观测、课程和指令实现。
++- `locolab/rsl_rl/`：共享 PPO、网络及训练运行器。
++- `deploy/policy/go2w/`：三份完整 checkpoint、ONNX/TorchScript 网络与来源参数。
++- `tests/`：回归测试与仿真检查。
+ 
+-### Git 工作流
++## 配置约定
+ 
+-**禁止直接 push 到 main 分支**，请遵循以下流程：
++三个已交付技能均显式保留训练时腿部 23.5 Nm / 30 rad/s 限值；Gait 自碰撞关闭，高台与 Jump 开启。
++共享资产对其他任务仍使用按关节定义的限值。不要删除技能覆盖项或把三个网络的观测混用。
++三个技能的 actor 输入维数分别为 64、53、54；输出都是 16 维动作。
+ 
+-```bash
+-# 1. 创建功能分支
+-git checkout -b feature/your-feature-name
++详细启动、两阶段 Jump、动力学说明及验证记录见 [本地使用说明](docs/barrierloco_local.md)。
++上游技能资料：[Gait](docs/go2w_gait_overview.md)、[高台](docs/go2w_highplatform_overview.md)、[Jump](docs/go2w_jump.md)。
+ 
+-# 2. 开发并提交
+-git add .
+-git commit -m "feat: add your feature"
++本次统一仅验证 Isaac Lab，不包含新的 MuJoCo 或实机验证。
++历史代码与独立目录已备份到工作区外，当前使用根目录这一份代码。
+ 
+-# 3. 推送分支
+-git push origin feature/your-feature-name
++## Git
+ 
+-# 4. 创建 Pull Request 合并到 main
+-```
+-
+-### 分支命名规范
+-
+-| 前缀 | 用途 |
+-|------|------|
+-| `feature/` | 新功能 |
+-| `fix/` | Bug 修复 |
+-| `refactor/` | 代码重构 |
+-| `docs/` | 文档更新 |
+-
+-### Pre-commit
+-
+-提交前请运行 pre-commit：
+-
+-```bash
+-pip install pre-commit
+-pre-commit install
+-pre-commit run --all-files
+-```
++本地整合分支：`barrierloco-unified`。保留三个上游分支历史及原有 origin，未推送远端。
++开发时使用功能分支，不直接 push 到 main。
+diff --git a/docs/barrierloco_local.md b/docs/barrierloco_local.md
+index f0926f1..deae9b4 100644
+--- a/docs/barrierloco_local.md
++++ b/docs/barrierloco_local.md
+@@ -2,6 +2,9 @@
+ 
+ 更新日期：2026-10-10。工作目录 `/home/joey/BarrierLoco`；本地分支 `barrierloco-unified`。
+ 
++2026-10-11 更新：Multiskill 默认已切换为完整迁入的 V1 课程版，使用旧版最终权重与连续指令演示。
++当前启动、录屏与训练方式以 [V1整合说明](multiskill_v1.md) 为准；下方直接扩速实验和旧回放参数仅作历史记录。
++
+ ## 已整合来源
+ 
+ 来源仓库 `shang13206/OmniBot`：
+@@ -26,7 +29,7 @@
+ 
+ ## 日常使用
+ 
+-### 当前实验：仅扩展多步态前后速度
++### 历史实验：仅扩展多步态前后速度（已由V1课程版替代）
+ 
+ 2026-10-10：Gait 任务的 `commands.base_velocity.lin_vel_x` 从 `(-1, 1)` 改为
+ `(-5, 5)` m/s，训练和 Play 配置均继承该覆盖。其余指令、地形、奖励、动力学和 PPO 参数保持不变。
+diff --git a/docs/go2w_actuator_limits.md b/docs/go2w_actuator_limits.md
+index b6fe60e..e4584a5 100644
+--- a/docs/go2w_actuator_limits.md
++++ b/docs/go2w_actuator_limits.md
+@@ -1,5 +1,9 @@
+ # Go2W actuator model limits
+ 
++Unified BarrierLoco note: Gait and HighPlatform explicitly retain the bundled
++checkpoints' 23.5 Nm / 30 rad/s leg limits, as Jump already does. Their task-local
++overrides do not change the common asset or deployment limits documented below.
++
+ The common Isaac Lab asset, deployment torque caps and MuJoCo
+ actuators use user-selected conservative rounding of the per-joint limits in the
+ [official Go2-W URDF](https://github.com/unitreerobotics/unitree_ros/blob/5994d4faef0a9cadd3287f8de0199a67eeb2a259/robots/go2w_description/urdf/go2w_description.urdf).
+diff --git a/docs/go2w_highplatform_overview.md b/docs/go2w_highplatform_overview.md
+index edd2870..f31aea5 100644
+--- a/docs/go2w_highplatform_overview.md
++++ b/docs/go2w_highplatform_overview.md
+@@ -1,5 +1,8 @@
+ # Go2W 高台技能交付
+ 
++统一版补充：当前任务显式保留本模型训练时腿部 23.5 Nm / 30 rad/s 限值和开启自碰撞的配置，
++避免共享资产更新改变回放动力学。下文是原始交付记录，其他任务设置保持一致。
++
+ 任务为 `OmniBot-Go2W-HighPlatform-MLP-v0`，分支 `feature/go2w-highplatform-rough-mlp`。
+ 在 main 的 Rough 基线 `3dda20b374a382cd01a7a7f7d45e3693767826d3` 上开发，
+ 从最新 Rough MLP 的 `model_4999.pt` 继续训练，最终交付 `model_9998.pt`。
+diff --git a/locolab/rsl_rl/runners/on_policy_runner.py b/locolab/rsl_rl/runners/on_policy_runner.py
+index 478adea..67e2dde 100644
+--- a/locolab/rsl_rl/runners/on_policy_runner.py
++++ b/locolab/rsl_rl/runners/on_policy_runner.py
+@@ -178,6 +178,9 @@ class OnPolicyRunner:
+         self.logger.save_model(path, self.current_learning_iteration)
+ 
+     def load(self, path: str, load_optimizer: bool = True, map_location: str | None = None) -> dict:
++        # Checkpoints can originate from another machine or GPU index.
++        if map_location is None:
++            map_location = self.device
+         loaded_dict = torch.load(path, weights_only=False, map_location=map_location)
+         # Load model
+         resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"], strict=True)
+diff --git a/locolab/scripts/locomotion/play.py b/locolab/scripts/locomotion/play.py
+index 2a81586..f8b55a4 100644
+--- a/locolab/scripts/locomotion/play.py
++++ b/locolab/scripts/locomotion/play.py
+@@ -67,6 +67,8 @@ parser.add_argument("--follow-camera", action="store_true", help="Track robot ze
+ parser.add_argument("--velocity-sweep", action="store_true", help="Cycle Go2W gait / omnidirectional velocity cases.")
+ parser.add_argument("--live-plot", action="store_true", help="Dock live velocity curves and values inside Isaac Sim.")
+ parser.add_argument("--sweep-seconds", type=float, default=6.0, help="Simulation seconds per velocity case.")
++parser.add_argument("--sweep-max-vx", type=float, default=5.0,
++                    help="Filter sweep cases by absolute vx; use 1 for the original-range control model.")
+ # append RSL-RL cli arguments
+ cli_args.add_rsl_rl_args(parser)
+ # append AppLauncher cli args
+@@ -76,6 +78,8 @@ if args_cli.velocity_sweep and args_cli.task != "OmniBot-Go2W-Gait-Flat-MLP-v0":
+     parser.error("--velocity-sweep requires the Go2W Gait task")
+ if args_cli.sweep_seconds <= 0 or not math.isfinite(args_cli.sweep_seconds):
+     parser.error("--sweep-seconds must be positive and finite")
++if not math.isfinite(args_cli.sweep_max_vx) or args_cli.sweep_max_vx <= 0:
++    parser.error("--sweep-max-vx must be positive and finite")
+ if args_cli.live_plot and args_cli.headless:
+     parser.error("--live-plot requires a desktop window")
+ if args_cli.jump_stage and args_cli.task != "OmniBot-Go2W-Jump-MLP-v0":
+@@ -131,6 +135,7 @@ def main():
+         # by the random heading controller used during normal training.
+         env_cfg.scene.num_envs = 1
+         env_cfg.commands.base_velocity.heading_command = False
++        env_cfg.commands.base_velocity.lin_vel_x = (-args_cli.sweep_max_vx, args_cli.sweep_max_vx)
+     if args_cli.follow_camera:
+         configure_robot_follow_view(env_cfg.viewer)
+     if args_cli.jump_stage:
+@@ -254,7 +259,8 @@ def main():
+         from locolab.source.locomotion.mdp.wtw_math import PHASE_PRESETS
+         from locolab.source.locomotion.utils.gait_sweep import gait_command, velocity_cases
+ 
+-        cases = velocity_cases()
++        # Keep narrow-range checkpoints inside their trained vx range during inspection.
++        cases = [case for case in velocity_cases() if abs(case[2][0]) <= args_cli.sweep_max_vx]
+     previous_case = -1
+     reset_count = 0
+     # simulate environment
+diff --git a/locolab/scripts/locomotion/train.py b/locolab/scripts/locomotion/train.py
+index 7e3595a..0c34963 100644
+--- a/locolab/scripts/locomotion/train.py
++++ b/locolab/scripts/locomotion/train.py
+@@ -60,6 +60,9 @@ parser.add_argument(
+ )
+ parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+ parser.add_argument("--task", type=str, default=None, choices=tasks, help="Name of the task.")
++parser.add_argument("--init_checkpoint", help="Initialize policy weights with a fresh optimizer and curriculum clock.")
++parser.add_argument("--from-scratch", action="store_true", help="Start with random weights; forbid checkpoint loading.")
++parser.add_argument("--validate-finite", action="store_true", help="Reject non-finite training data.")
+ parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
+ parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
+ parser.add_argument(
+@@ -85,6 +88,12 @@ cli_args.add_rsl_rl_args(parser)
+ AppLauncher.add_app_launcher_args(parser)
+ argcomplete.autocomplete(parser)
+ args_cli, hydra_args = parser.parse_known_args()
++if args_cli.from_scratch and (args_cli.resume or args_cli.init_checkpoint or args_cli.warm_start_rough or args_cli.checkpoint):
++    parser.error("--from-scratch cannot be combined with checkpoint initialization or resume")
++if args_cli.init_checkpoint and (args_cli.resume or args_cli.warm_start_rough or args_cli.jump_stage):
++    parser.error("--init_checkpoint cannot be combined with resume, Rough warm start, or jump stages")
++if args_cli.init_checkpoint and not pathlib.Path(args_cli.init_checkpoint).is_file():
++    parser.error("--init_checkpoint does not exist")
+ if args_cli.jump_stage and args_cli.task != "OmniBot-Go2W-Jump-MLP-v0":
+     parser.error("jump_stage requires OmniBot-Go2W-Jump-MLP-v0")
+ if args_cli.jump_stage == "skill" and (args_cli.resume or args_cli.warm_start_rough):
+@@ -172,6 +181,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
+     """Train with RSL-RL agent."""
+     # override configurations with non-hydra CLI arguments
+     agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
++    if args_cli.from_scratch and (agent_cfg.resume or agent_cfg.algorithm.class_name != "PPO"):
++        raise ValueError("--from-scratch requires PPO with resume disabled.")
+     if args_cli.jump_stage:
+         from locolab.source.locomotion.tasks.Go2W.jump_env_cfg import apply_jump_training_stage
+ 
+@@ -236,7 +247,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
+ 
+     # save resume path before creating a new log_dir
+     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
+-        resume_path = get_checkpoint_path(resume_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
++        # V1 accepts a concrete checkpoint as well as the existing run/name patterns.
++        if os.path.isfile(agent_cfg.load_checkpoint):
++            resume_path = os.path.abspath(agent_cfg.load_checkpoint)
++        else:
++            resume_path = get_checkpoint_path(resume_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
+ 
+     video_dir = None
+     video_fps = None
+@@ -265,9 +280,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
+     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
+ 
+     # create runner from rsl-rl
+-    runner = OnPolicyRunner(
++    from rsl_rl.runners.gait_curriculum_runner import GaitCurriculumRunner
++
++    runner_type = GaitCurriculumRunner if agent_cfg.class_name == "GaitCurriculumRunner" else OnPolicyRunner
++    runner = runner_type(
+         env,
+-        cli_args.runner_cfg_to_dict(agent_cfg, validate_finite=args_cli.smoke_marker),
++        cli_args.runner_cfg_to_dict(agent_cfg, validate_finite=args_cli.smoke_marker or args_cli.validate_finite),
+         log_dir=log_dir,
+         device=agent_cfg.device,
+     )
+@@ -294,12 +312,27 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
+         # load previously trained model
+         runner.load(resume_path)
+ 
++    elif args_cli.init_checkpoint:
++        # V1 reproduction: load actor/critic/noise, not Adam state or iteration count.
++        runner.load(args_cli.init_checkpoint, load_optimizer=False, map_location=agent_cfg.device)
++        runner.current_learning_iteration = 0
++
+     # dump the configuration into log-directory
+     if is_primary:
++        # Save explicit provenance: agent.yaml alone does not record --init_checkpoint.
++        dump_yaml(os.path.join(log_dir, "params", "initialization.yaml"), {
++            "mode": "resume" if agent_cfg.resume else (
++                "initialize" if args_cli.init_checkpoint or args_cli.warm_start_rough else "random"
++            ),
++            "checkpoint": resume_path if agent_cfg.resume else (args_cli.init_checkpoint or args_cli.warm_start_rough),
++            "explicit_from_scratch": args_cli.from_scratch,
++        })
+         dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
+         dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
+ 
+     # run training
++    if args_cli.from_scratch:
++        print("[INFO] FROM_SCRATCH: random actor/critic/noise initialization; no checkpoint loaded.", flush=True)
+     runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
+ 
+     if args_cli.smoke_marker and args_cli.distributed:
+diff --git a/locolab/source/locomotion/mdp/command/wtw_command.py b/locolab/source/locomotion/mdp/command/wtw_command.py
+index 318c64c..53b539e 100644
+--- a/locolab/source/locomotion/mdp/command/wtw_command.py
++++ b/locolab/source/locomotion/mdp/command/wtw_command.py
+@@ -8,6 +8,7 @@ import torch
+ from isaaclab.managers import CommandTerm
+ 
+ from ..wtw_kinematics import LEG_JOINT_NAMES, height_reference_pose
++from ..wtw_curriculum import curriculum_limits, sample_curriculum_commands, validate_schedule
+ from ..wtw_math import (
+     FOOT_NAMES,
+     PHASE_PRESETS,
+@@ -27,6 +28,14 @@ class WTWCommand(CommandTerm):
+ 
+     def __init__(self, cfg, env):
+         super().__init__(cfg, env)
++        self._curriculum_step_offset = 0
++        if getattr(cfg, "curriculum_enabled", False):
++            validate_schedule(cfg.curriculum_schedule)
++            if cfg.curriculum_steps_per_iteration <= 0:
++                raise ValueError("Curriculum steps per iteration must be positive.")
++            final_speed, final_swing = cfg.curriculum_schedule[-1][1:]
++            if cfg.lin_vel_x != (-final_speed, final_speed) or cfg.footswing_height != (0.0, final_swing):
++                raise ValueError("Command bounds must match the final curriculum limits.")
+         if cfg.debug_vis:
+             raise ValueError("WTW command does not implement debug markers.")
+         if len(cfg.sampling_weights) != 3 or any(x < 0 for x in cfg.sampling_weights) or sum(cfg.sampling_weights) <= 0:
+@@ -116,7 +125,27 @@ class WTWCommand(CommandTerm):
+         ids = self._ids(env_ids)
+         self.phase[ids] = 0
+         self._just_reset[ids] = True
+-        return super().reset(ids)
++        metrics = super().reset(ids)
++        if getattr(self.cfg, "curriculum_enabled", False):
++            iteration = self.curriculum_step / self.cfg.curriculum_steps_per_iteration
++            speed, swing = curriculum_limits(iteration, self.cfg.curriculum_schedule)
++            metrics.update(curriculum_iteration=iteration, curriculum_vx_limit=speed, curriculum_swing_limit=swing)
++        return metrics
++
++    @property
++    def curriculum_step(self):
++        return self._curriculum_step_offset + self._env.common_step_counter
++
++    def curriculum_state_dict(self):
++        return {"step": self.curriculum_step, "schedule": self.cfg.curriculum_schedule,
++                "steps_per_iteration": self.cfg.curriculum_steps_per_iteration}
++
++    def load_curriculum_state_dict(self, state):
++        if tuple(map(tuple, state["schedule"])) != tuple(map(tuple, self.cfg.curriculum_schedule)):
++            raise ValueError("Resume curriculum schedule does not match this checkpoint.")
++        if state["steps_per_iteration"] != self.cfg.curriculum_steps_per_iteration or state["step"] < 0:
++            raise ValueError("Invalid or incompatible curriculum clock.")
++        self._curriculum_step_offset = int(state["step"]) - self._env.common_step_counter
+ 
+     def _resample_command(self, env_ids):
+         ids = self._ids(env_ids)
+@@ -137,6 +166,11 @@ class WTWCommand(CommandTerm):
+             (9, "footswing_height"),
+         ):
+             sample[:, index].uniform_(*getattr(self.cfg, name))
++        if getattr(self.cfg, "curriculum_enabled", False):
++            sample[:, 0], sample[:, 9] = sample_curriculum_commands(
++                count, self.device, self.curriculum_step / self.cfg.curriculum_steps_per_iteration,
++                self.cfg.curriculum_schedule,
++            )
+         presets = torch.tensor(list(PHASE_PRESETS.values()), device=self.device)
+         sample[:, 5:8] = sample_phase_neighborhood(
+             presets[category], self.cfg.phase_jitter_deg, self.cfg.max_pair_phase_error_deg
+diff --git a/locolab/source/locomotion/mdp/command/wtw_command_cfg.py b/locolab/source/locomotion/mdp/command/wtw_command_cfg.py
+index b47f76e..98c7203 100644
+--- a/locolab/source/locomotion/mdp/command/wtw_command_cfg.py
++++ b/locolab/source/locomotion/mdp/command/wtw_command_cfg.py
+@@ -6,6 +6,7 @@ from isaaclab.managers import CommandTermCfg
+ from isaaclab.utils import configclass
+ 
+ from .wtw_command import WTWCommand
++from ..wtw_curriculum import DEFAULT_SCHEDULE
+ 
+ 
+ @configclass
+@@ -33,6 +34,9 @@ class WTWCommandCfg(CommandTermCfg):
+     max_pair_phase_error_deg: float = 10.0
+     gait_duration: float = 0.5
+     footswing_height: tuple[float, float] = (0.0, 0.10)
++    curriculum_enabled: bool = False
++    curriculum_steps_per_iteration: int = 24
++    curriculum_schedule: tuple = DEFAULT_SCHEDULE
+     kappa: float = 0.07
+     # From Go2W URDF cylinder collision geometry in FR, FL, RR, RL order.
+     wheel_radius: float = 0.086
+diff --git a/locolab/source/locomotion/tasks/Go2W/gait_env_cfg.py b/locolab/source/locomotion/tasks/Go2W/gait_env_cfg.py
+index c8a912f..51d7724 100644
+--- a/locolab/source/locomotion/tasks/Go2W/gait_env_cfg.py
++++ b/locolab/source/locomotion/tasks/Go2W/gait_env_cfg.py
+@@ -78,10 +78,7 @@ class Go2WGaitEnvCfg(Go2WFlatEnvCfg):
+ 
+     def __post_init__(self):
+         super().__post_init__()
+-        # BarrierLoco velocity-range experiment; bundled weights were trained at +/-1 m/s.
+-        # Only widen body-frame vx: keep vy/yaw, reward shaping and dynamics unchanged.
+-        # This is uniform sampling, not a curriculum or a guarantee of achievable speed.
+-        self.commands.base_velocity.lin_vel_x = (-5.0, 5.0)
++        # Original +/-1 baseline; the V1-derived task owns gradual range expansion.
+         # Preserve the bundled Gait checkpoint's training dynamics.
+         self.scene.robot.actuators["legs"].effort_limit_sim = 23.5
+         self.scene.robot.actuators["legs"].velocity_limit_sim = 30.0
+diff --git a/locolab/source/locomotion/tasks/Go2W/high_platform_env_cfg.py b/locolab/source/locomotion/tasks/Go2W/high_platform_env_cfg.py
+index 5fe4e93..c2a1e97 100644
+--- a/locolab/source/locomotion/tasks/Go2W/high_platform_env_cfg.py
++++ b/locolab/source/locomotion/tasks/Go2W/high_platform_env_cfg.py
+@@ -133,6 +133,10 @@ class Go2WHighPlatformEnvCfg(Go2WRoughEnvCfg):
+     def __post_init__(self):
+         super().__post_init__()
+         self.episode_length_s = 10.0
++        # Preserve the bundled HighPlatform checkpoint's training dynamics.
++        self.scene.robot.actuators["legs"].effort_limit_sim = 23.5
++        self.scene.robot.actuators["legs"].velocity_limit_sim = 30.0
++        self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
+         self.events.reset_base.params["pose_range"] = {
+             "x": (-0.5, 0.5),
+             "y": (-0.5, 0.5),
+diff --git a/locolab/source/locomotion/tasks/__init__.py b/locolab/source/locomotion/tasks/__init__.py
+index 33e9aa9..5486bc6 100644
+--- a/locolab/source/locomotion/tasks/__init__.py
++++ b/locolab/source/locomotion/tasks/__init__.py
+@@ -7,6 +7,17 @@ import gymnasium as gym
+ # ==============================================================================
+ 
+ # Go2W Flat Terrain
++gym.register(
++    id="OmniBot-Go2W-Gait-Curriculum-Flat-MLP-v0",
++    entry_point="isaaclab.envs:ManagerBasedRLEnv",
++    disable_env_checker=True,
++    kwargs={
++        "env_cfg_entry_point": f"{__name__}.Go2W.gait_curriculum_env_cfg:Go2WGaitCurriculumEnvCfg",
++        "play_env_cfg_entry_point": f"{__name__}.Go2W.gait_curriculum_env_cfg:Go2WGaitCurriculumPlayEnvCfg",
++        "rsl_rl_cfg_entry_point": "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WGaitCurriculumPPORunnerCfg",
++    },
++)
++
+ gym.register(
+     id="OmniBot-Go2W-Gait-Flat-MLP-v0",
+     entry_point="isaaclab.envs:ManagerBasedRLEnv",
+diff --git a/locolab/source/locomotion/tasks/agents/rsl_rl_ppo_cfg.py b/locolab/source/locomotion/tasks/agents/rsl_rl_ppo_cfg.py
+index 2b42723..1f520b4 100644
+--- a/locolab/source/locomotion/tasks/agents/rsl_rl_ppo_cfg.py
++++ b/locolab/source/locomotion/tasks/agents/rsl_rl_ppo_cfg.py
+@@ -184,6 +184,17 @@ class Go2WGaitMLPPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
+         self.policy.noise_std_type = "log"
+ 
+ 
++@configclass
++class Go2WGaitCurriculumPPORunnerCfg(Go2WGaitMLPPPORunnerCfg):
++    def __post_init__(self) -> None:
++        super().__post_init__()
++        self.class_name = "GaitCurriculumRunner"
++        self.experiment_name = "omnibot_go2w_gait_curriculum_vx5_swing15"
++        self.max_iterations = 30000
++        self.save_interval = 500
++        self.algorithm.learning_rate = 3.0e-4
++
++
+ @configclass
+ class Go2WJumpMLPPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
+     def __post_init__(self) -> None:
+diff --git a/locolab/source/locomotion/utils/velocity_panel.py b/locolab/source/locomotion/utils/velocity_panel.py
+index c980b57..56e0fcd 100644
+--- a/locolab/source/locomotion/utils/velocity_panel.py
++++ b/locolab/source/locomotion/utils/velocity_panel.py
+@@ -16,14 +16,16 @@ GRID = 0xFF42382C
+ 
+ 
+ class VelocityPanel:
+-    def __init__(self):
+-        self.window = ui.Window("Velocity Tracking", width=430, height=440)
++    def __init__(self, window=None, frame=None):
++        # Embed in the V1 command inspector, or retain the standalone play panel.
++        self.owns_window = window is None
++        self.window = window or ui.Window("Velocity Tracking", width=430, height=440)
+         self.history = [[deque(maxlen=250), deque(maxlen=250)] for _ in range(3)]
+         self.plots = []
+         self.values = []
+         self.ticks = []
+         self.last_update = -1.0
+-        with self.window.frame:
++        with (frame if frame is not None else self.window.frame):
+             with ui.ScrollingFrame(horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF):
+                 with ui.VStack(spacing=3, height=0):
+                     ui.Label("VELOCITY TRACKING", height=20, style={"color": TEXT, "font_size": 16})
+@@ -116,4 +118,5 @@ class VelocityPanel:
+ 
+     def close(self):
+         self.docking.cancel()
+-        self.window.destroy()
++        if self.owns_window:
++            self.window.destroy()
+diff --git a/tests/test_go2w_high_platform_config.py b/tests/test_go2w_high_platform_config.py
+index 38e06fc..7c17fc1 100644
+--- a/tests/test_go2w_high_platform_config.py
++++ b/tests/test_go2w_high_platform_config.py
+@@ -118,6 +118,9 @@ def test_training_keeps_rough_interfaces_and_randomization():
+     }
+     assert overrides == {
+         "self.episode_length_s": 10.0,
++        "self.scene.robot.actuators['legs'].effort_limit_sim": 23.5,
++        "self.scene.robot.actuators['legs'].velocity_limit_sim": 30.0,
++        "self.scene.robot.spawn.articulation_props.enabled_self_collisions": True,
+         "self.events.reset_base.params['pose_range']": {
+             "x": (-0.5, 0.5),
+             "y": (-0.5, 0.5),

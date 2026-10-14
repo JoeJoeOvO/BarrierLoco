@@ -1,5 +1,8 @@
 # Go2W 高台技能交付
 
+统一版补充：当前任务显式保留本模型训练时腿部 23.5 Nm / 30 rad/s 限值和开启自碰撞的配置，
+避免共享资产更新改变回放动力学。下文是原始交付记录，其他任务设置保持一致。
+
 任务为 `OmniBot-Go2W-HighPlatform-MLP-v0`，分支 `feature/go2w-highplatform-rough-mlp`。
 在 main 的 Rough 基线 `3dda20b374a382cd01a7a7f7d45e3693767826d3` 上开发，
 从最新 Rough MLP 的 `model_4999.pt` 继续训练，最终交付 `model_9998.pt`。

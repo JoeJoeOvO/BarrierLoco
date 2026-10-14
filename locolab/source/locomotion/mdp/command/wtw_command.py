@@ -8,6 +8,7 @@ import torch
 from isaaclab.managers import CommandTerm
 
 from ..wtw_kinematics import LEG_JOINT_NAMES, height_reference_pose
+from ..wtw_curriculum import curriculum_limits, sample_curriculum_commands, validate_schedule
 from ..wtw_math import (
     FOOT_NAMES,
     PHASE_PRESETS,
@@ -27,6 +28,14 @@ class WTWCommand(CommandTerm):
 
     def __init__(self, cfg, env):
         super().__init__(cfg, env)
+        self._curriculum_step_offset = 0
+        if getattr(cfg, "curriculum_enabled", False):
+            validate_schedule(cfg.curriculum_schedule)
+            if cfg.curriculum_steps_per_iteration <= 0:
+                raise ValueError("Curriculum steps per iteration must be positive.")
+            final_speed, final_swing = cfg.curriculum_schedule[-1][1:]
+            if cfg.lin_vel_x != (-final_speed, final_speed) or cfg.footswing_height != (0.0, final_swing):
+                raise ValueError("Command bounds must match the final curriculum limits.")
         if cfg.debug_vis:
             raise ValueError("WTW command does not implement debug markers.")
         if len(cfg.sampling_weights) != 3 or any(x < 0 for x in cfg.sampling_weights) or sum(cfg.sampling_weights) <= 0:
@@ -116,7 +125,30 @@ class WTWCommand(CommandTerm):
         ids = self._ids(env_ids)
         self.phase[ids] = 0
         self._just_reset[ids] = True
-        return super().reset(ids)
+        metrics = super().reset(ids)
+        if getattr(self.cfg, "curriculum_enabled", False):
+            iteration = self.curriculum_step / self.cfg.curriculum_steps_per_iteration
+            speed, swing = curriculum_limits(iteration, self.cfg.curriculum_schedule)
+            metrics.update(curriculum_iteration=iteration, curriculum_vx_limit=speed, curriculum_swing_limit=swing)
+        return metrics
+
+    @property
+    def curriculum_step(self):
+        return self._curriculum_step_offset + self._env.common_step_counter
+
+    def curriculum_state_dict(self):
+        return {
+            "step": self.curriculum_step,
+            "schedule": self.cfg.curriculum_schedule,
+            "steps_per_iteration": self.cfg.curriculum_steps_per_iteration,
+        }
+
+    def load_curriculum_state_dict(self, state):
+        if tuple(map(tuple, state["schedule"])) != tuple(map(tuple, self.cfg.curriculum_schedule)):
+            raise ValueError("Resume curriculum schedule does not match this checkpoint.")
+        if state["steps_per_iteration"] != self.cfg.curriculum_steps_per_iteration or state["step"] < 0:
+            raise ValueError("Invalid or incompatible curriculum clock.")
+        self._curriculum_step_offset = int(state["step"]) - self._env.common_step_counter
 
     def _resample_command(self, env_ids):
         ids = self._ids(env_ids)
@@ -137,6 +169,11 @@ class WTWCommand(CommandTerm):
             (9, "footswing_height"),
         ):
             sample[:, index].uniform_(*getattr(self.cfg, name))
+        if getattr(self.cfg, "curriculum_enabled", False):
+            sample[:, 0], sample[:, 9] = sample_curriculum_commands(
+                count, self.device, self.curriculum_step / self.cfg.curriculum_steps_per_iteration,
+                self.cfg.curriculum_schedule,
+            )
         presets = torch.tensor(list(PHASE_PRESETS.values()), device=self.device)
         sample[:, 5:8] = sample_phase_neighborhood(
             presets[category], self.cfg.phase_jitter_deg, self.cfg.max_pair_phase_error_deg

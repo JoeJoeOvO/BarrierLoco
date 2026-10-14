@@ -1,0 +1,27 @@
+{
+  "final_bundle": "deploy/policy/go2w/multiskill_scratch80k",
+  "model": "deploy/policy/go2w/multiskill_scratch80k/model_79999.pt",
+  "sha256": "2133340f4cd89853140a17941f8033b8c432ac5c1738774337e40a10175d1d00",
+  "source_snapshot": {
+    "path": "artifacts/experiment_snapshots/multiskill_scratch80k_20261012/source.tar.gz",
+    "sha256": "8dab88ec324ffcaa57c4af492ccc4c7ed78fe0d6e9dbba7965128be1bbdc214a",
+    "file_count": 159,
+    "scope": "Current code at documentation time, including untracked source; excludes weights, assets and Python environment. Training-time tracked diffs copied separately."
+  },
+  "git_head_at_training": "29af35dbbeb8c069fd13668c34719a795dc39674",
+  "stages": {
+    "scratch30k": {
+      "initialization": "random",
+      "updates": 30000,
+      "config": "scratch30k/",
+      "final_checkpoint_sha256": "fc83d10afd178cba5c1b0b5c333d92555d32508032f6d9d93f74ea919e951308",
+      "checkpoint_retained": false
+    },
+    "continue50k": {
+      "initialization": "resume scratch30k actor/critic/optimizer/curriculum",
+      "updates": 50000,
+      "config": "continue50k/"
+    }
+  },
+  "cleanup": "Only final 80k checkpoint, exports, configurations, summary and reproduction code retained. Intermediate logs/checkpoints/playback/test outputs removed."
+}

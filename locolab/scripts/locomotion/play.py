@@ -56,6 +56,8 @@ parser.add_argument(
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument("--highplatform-pretrain", action="store_true", help="Replay Rough with its HighPlatform pretraining leg limits.")
+parser.add_argument("--offline-visuals", action="store_true", help="Use local terrain material and texture-free lighting.")
 parser.add_argument("--jump_stage", choices=("skill", "speed"), help="Use the matching Go2W Jump stage semantics.")
 parser.add_argument(
     "--use_pretrained_checkpoint",
@@ -67,15 +69,21 @@ parser.add_argument("--follow-camera", action="store_true", help="Track robot ze
 parser.add_argument("--velocity-sweep", action="store_true", help="Cycle Go2W gait / omnidirectional velocity cases.")
 parser.add_argument("--live-plot", action="store_true", help="Dock live velocity curves and values inside Isaac Sim.")
 parser.add_argument("--sweep-seconds", type=float, default=6.0, help="Simulation seconds per velocity case.")
+parser.add_argument("--sweep-max-vx", type=float, default=5.0,
+                    help="Filter sweep cases by absolute vx; use 1 for the original-range control model.")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
+if args_cli.highplatform_pretrain and args_cli.task != "OmniBot-Go2W-Rough-MLP-v0":
+    parser.error("--highplatform-pretrain requires OmniBot-Go2W-Rough-MLP-v0")
 if args_cli.velocity_sweep and args_cli.task != "OmniBot-Go2W-Gait-Flat-MLP-v0":
     parser.error("--velocity-sweep requires the Go2W Gait task")
 if args_cli.sweep_seconds <= 0 or not math.isfinite(args_cli.sweep_seconds):
     parser.error("--sweep-seconds must be positive and finite")
+if not math.isfinite(args_cli.sweep_max_vx) or args_cli.sweep_max_vx <= 0:
+    parser.error("--sweep-max-vx must be positive and finite")
 if args_cli.live_plot and args_cli.headless:
     parser.error("--live-plot requires a desktop window")
 if args_cli.jump_stage and args_cli.task != "OmniBot-Go2W-Jump-MLP-v0":
@@ -126,11 +134,24 @@ def main():
         entry_point_key="play_env_cfg_entry_point",
     )
     agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
+    if args_cli.highplatform_pretrain:
+        # Match train.py --highplatform-pretrain, not the shared asset's newer calf limits.
+        env_cfg.scene.robot.actuators["legs"].effort_limit_sim = 23.5
+        env_cfg.scene.robot.actuators["legs"].velocity_limit_sim = 30.0
+    if args_cli.offline_visuals:
+        import isaaclab.sim as sim_utils
+
+        # Rendering only: preserve all terrain collision and friction settings.
+        env_cfg.scene.terrain.visual_material = sim_utils.PreviewSurfaceCfg(
+            diffuse_color=(0.62, 0.66, 0.70), roughness=0.85
+        )
+        env_cfg.scene.sky_light.spawn = sim_utils.DomeLightCfg(intensity=300.0)
     if args_cli.velocity_sweep:
         # A single robot makes curves unambiguous. Manual wz must not be overwritten
         # by the random heading controller used during normal training.
         env_cfg.scene.num_envs = 1
         env_cfg.commands.base_velocity.heading_command = False
+        env_cfg.commands.base_velocity.lin_vel_x = (-args_cli.sweep_max_vx, args_cli.sweep_max_vx)
     if args_cli.follow_camera:
         configure_robot_follow_view(env_cfg.viewer)
     if args_cli.jump_stage:
@@ -254,7 +275,8 @@ def main():
         from locolab.source.locomotion.mdp.wtw_math import PHASE_PRESETS
         from locolab.source.locomotion.utils.gait_sweep import gait_command, velocity_cases
 
-        cases = velocity_cases()
+        # Keep narrow-range checkpoints inside their trained vx range during inspection.
+        cases = [case for case in velocity_cases() if abs(case[2][0]) <= args_cli.sweep_max_vx]
     previous_case = -1
     reset_count = 0
     # simulate environment
@@ -263,6 +285,8 @@ def main():
         # run everything in inference mode
         with torch.inference_mode():
             label = "random commands"
+            if args_cli.task == "OmniBot-Go2W-HighPlatform-MLP-v0":
+                label = f"HighPlatform | {pathlib.Path(resume_path).name} | 30-80 cm"
             case_changed = False
             if args_cli.velocity_sweep:
                 case_number = int(timestep * dt / args_cli.sweep_seconds)
