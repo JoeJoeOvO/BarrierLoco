@@ -1,0 +1,58 @@
+{
+  "retained_task": "OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0",
+  "retained_checkpoint": "model_4999.pt",
+  "checkpoint_sha256": "2fe50b758224b45bfa2f689a37931a3e9d6e4cef670e5de675b9a4b7584eeb50",
+  "bank_sha256": "45b202e86d29022f312f8e911f108f11e7a716f7b35decbd5ba553fafd1966a5",
+  "random_initialization": true,
+  "training_updates": 5000,
+  "num_envs": 4096,
+  "removed_task_variants": [
+    "OmniBot-Go2W-Parkour-MLP-v0",
+    "OmniBot-Go2W-Parkour-Speed-MLP-v0",
+    "OmniBot-Go2W-Parkour-FixedTarget-MLP-v0"
+  ],
+  "validation": {
+    "all_effective_train_play_and_ppo_fields_equal": true,
+    "regression_tests_passed": 239,
+    "core_parkour_tests": 214,
+    "shared_and_legacy_jump_tests": 25,
+    "scoped_precommit_passed": true,
+    "native_contact_audit": {
+      "envs": 30,
+      "steps": 320,
+      "first_landing_events": 21,
+      "repeated_penalty": false
+    },
+    "export_equivalence": {
+      "inputs": 385,
+      "torchscript_max_absolute_error": 0,
+      "onnx_max_absolute_error": 0.00006103515625
+    },
+    "packaged_policy_replay": {
+      "episodes": 120,
+      "actual_takeoffs": 84,
+      "jump_successes": 80,
+      "rolling_10s_successes": 36,
+      "all_episode_results_exactly_equal_to_pre_cleanup": true
+    }
+  },
+  "cleanup": {
+    "local_old_experiment_directories": 14,
+    "remote_old_workspaces": 14,
+    "local_removed_file_bytes": 319068527,
+    "remote_removed_file_bytes": 2111973851,
+    "current_run_intermediate_checkpoints_removed": 10,
+    "final_videos_preserved": true,
+    "full_evaluation_trace_preserved_compressed": true,
+    "seven_selected_to_collection_preserved": true,
+    "nine_frozen_training_source_files_verified": true,
+    "legacy_finished_jump_preserved": true,
+    "other_skills_untouched": true,
+    "wandb_online_history_untouched": true
+  },
+  "evidence": "artifacts/go2w_parkour/20261012_final_4999/",
+  "limitations": "57-input policy; existing 54-input Jump sim2sim/runtime not adapted, no real-robot validation.",
+  "ppo_updates_during_cleanup": 0,
+  "commits": 0,
+  "pushes": 0
+}

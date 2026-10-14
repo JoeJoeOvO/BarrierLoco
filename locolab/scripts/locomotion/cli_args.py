@@ -57,6 +57,40 @@ def add_rsl_rl_args(parser: argparse.ArgumentParser):
     )
 
 
+def validate_scratch_request(args_cli: argparse.Namespace) -> None:
+    """Reject checkpoint-bearing arguments for the explicit fixed-target scratch mode."""
+    if not getattr(args_cli, "from_scratch", False):
+        return
+    if args_cli.task not in (
+        "OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0",
+        "OmniBot-Go2W-Parkour-GoalGrid-MLP-v0",
+    ):
+        raise ValueError("--from_scratch is currently supported for Go2W Parkour FixedTarget MLP")
+    for name in ("resume", "warm_start_rough", "checkpoint", "load_run", "resume_experiment_name", "init_checkpoint"):
+        if getattr(args_cli, name, None):
+            raise ValueError(f"--from_scratch cannot be combined with --{name}")
+
+
+def scratch_initialization_report(runner) -> dict:
+    """Audit newly constructed MLP/optimizer before the first update or model load."""
+    import hashlib
+
+    if runner.current_learning_iteration != 0 or runner.alg.optimizer.state:
+        raise ValueError("Scratch initialization requires iteration zero and an empty optimizer state")
+    state = runner.alg.policy.state_dict()
+    report = {
+        "mode": "scratch",
+        "checkpoint_loaded": False,
+        "initial_iteration": 0,
+        "optimizer_state_entries": 0,
+    }
+    for name in ("actor", "critic"):
+        weight = state[f"{name}.0.weight"].detach().cpu().contiguous()
+        report[f"{name}_inputs"] = weight.shape[1]
+        report[f"{name}_first_weight_sha256"] = hashlib.sha256(weight.numpy().tobytes()).hexdigest()
+    return report
+
+
 def parse_rsl_rl_cfg(task_name: str, args_cli: argparse.Namespace) -> RslRlOnPolicyRunnerCfg:
     """Parse configuration for RSL-RL agent based on inputs.
 

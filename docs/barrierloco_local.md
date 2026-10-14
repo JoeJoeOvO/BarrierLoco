@@ -1,3 +1,5 @@
+> Jump 更新：`omnijump` 已切换为 GoalGrid，旧两阶段 Jump 启动和权重路径仅供历史参考。当前命令见 [GoalGrid 整合说明](goalparkour_integration.md)。
+
 # BarrierLoco 统一仓库使用说明
 
 更新日期：2026-10-10。工作目录 `/home/joey/BarrierLoco`；本地分支 `barrierloco-unified`。

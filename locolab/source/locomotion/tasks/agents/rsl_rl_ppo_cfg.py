@@ -205,6 +205,25 @@ class Go2WJumpMLPPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
 
 
 @configclass
+class Go2WParkourFixedTargetTunedMLPPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.max_iterations = 5000
+        self.experiment_name = "omnibot_go2w_parkour_fixed_target_tuned_mlp_v0"
+        self.resume_experiment_name = self.experiment_name
+        self.policy.init_noise_std = 0.6
+        self.algorithm.entropy_coef = 0.003
+
+
+@configclass
+class Go2WParkourGoalGridMLPPPORunnerCfg(Go2WParkourFixedTargetTunedMLPPPORunnerCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.experiment_name = "omnibot_go2w_parkour_goal_grid_mlp_v0"
+        self.resume_experiment_name = self.experiment_name
+
+
+@configclass
 class Go2WHandstandPPORunnerCfg(Go2WFlatMLPPPORunnerCfg):
     def __post_init__(self) -> None:
         super().__post_init__()

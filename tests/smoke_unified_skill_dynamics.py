@@ -26,7 +26,6 @@ try:
         "OmniBot-Go2W-Gait-Flat-MLP-v0": False,
         "OmniBot-Go2W-Gait-Curriculum-Flat-MLP-v0": False,
         "OmniBot-Go2W-HighPlatform-MLP-v0": True,
-        "OmniBot-Go2W-Jump-MLP-v0": True,
     }
     configs = []
     for task, self_collisions in contracts.items():
@@ -44,6 +43,20 @@ try:
             configs.append(cfg)
             print(f"SKILL_DYNAMICS_OK task={task} config={entry}")
 
+    # Parkour uses the per-joint TO dynamics, unlike the legacy Jump checkpoint.
+    parkour_configs = []
+    for task in ("OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0", "OmniBot-Go2W-Parkour-GoalGrid-MLP-v0"):
+        for entry in ("env_cfg_entry_point", "play_env_cfg_entry_point"):
+            cfg = load_cfg_from_registry(task, entry)
+            legs = cfg.scene.robot.actuators["legs"]
+            assert legs.effort_limit_sim == {".*_hip_joint": 23.5, ".*_thigh_joint": 23.5, ".*_calf_joint": 35.0}
+            assert legs.velocity_limit_sim == {".*_hip_joint": 30.0, ".*_thigh_joint": 30.0, ".*_calf_joint": 20.0}
+            assert cfg.scene.robot.spawn.articulation_props.enabled_self_collisions is True
+            assert math.isclose(cfg.sim.dt * cfg.decimation, 0.02)
+            assert cfg.actions.joint_pos.scale == 0.25 and cfg.actions.joint_vel.scale == 10.0
+            parkour_configs.append(cfg)
+            print(f"SKILL_DYNAMICS_OK task={task} config={entry}")
+
     # Config creation and task-local mutation must not modify other tasks or the shared asset.
     configs[0].scene.robot.actuators["legs"].effort_limit_sim = 1.0
     for cfg in configs[1:]:
@@ -51,6 +64,8 @@ try:
     for robot in (GO2W_CFG, Go2WRoughEnvCfg().scene.robot):
         assert robot.actuators["legs"].effort_limit_sim[".*_calf_joint"] == 35.0
         assert robot.actuators["legs"].velocity_limit_sim[".*_calf_joint"] == 20.0
+    for cfg in parkour_configs:
+        assert cfg.scene.robot.actuators["legs"].effort_limit_sim[".*_calf_joint"] == 35.0
     print("UNIFIED_SKILL_DYNAMICS_OK")
 finally:
     app.close()

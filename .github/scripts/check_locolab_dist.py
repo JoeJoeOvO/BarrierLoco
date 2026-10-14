@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import importlib.util
 import json
 import tarfile
@@ -12,6 +13,17 @@ from pathlib import Path, PurePosixPath
 JUMP_REFERENCE = PurePosixPath(
     "locolab/source/locomotion/mdp/reference_motions/go2w_jump_20cm_fast_full_dynamics_to.json"
 )
+PARKOUR_REFERENCES = {
+    PurePosixPath("locolab/source/locomotion/mdp/reference_motions") / name
+    for name in ("go2w_parkour_bank.json.gz", "go2w_parkour_goal_grid.json.gz")
+}
+
+
+def check_bank_bytes(data: bytes) -> None:
+    # Reject missing LFS content as well as corrupted compressed references.
+    json.loads(gzip.decompress(data))
+
+
 GO2W_USD_ROOT = PurePosixPath("locolab/source/locomotion/assets/Go2W/usd")
 M20_RESOURCES = {
     PurePosixPath("locolab/source/locomotion/assets/Go2W/urdf/go2w.urdf"),
@@ -41,8 +53,10 @@ def check_wheel(path: Path) -> None:
     """Assert that the wheel contains every runtime USD and jump reference."""
     with zipfile.ZipFile(path) as archive:
         members = {PurePosixPath(name) for name in archive.namelist()}
-        _require_paths(path, members, REQUIRED_USD_FILES | {JUMP_REFERENCE} | M20_RESOURCES)
+        _require_paths(path, members, REQUIRED_USD_FILES | {JUMP_REFERENCE} | M20_RESOURCES | PARKOUR_REFERENCES)
 
+        for reference in PARKOUR_REFERENCES:
+            check_bank_bytes(archive.read(str(reference)))
         with archive.open(str(JUMP_REFERENCE)) as stream:
             payload = json.load(stream)
         if not payload.get("time") or not payload.get("metadata"):
@@ -62,7 +76,7 @@ def check_sdist(path: Path) -> None:
             for member in archive.getmembers()
             if len(PurePosixPath(member.name).parts) > 1
         }
-    sdist_resources.update(item.relative_to("locolab") for item in M20_RESOURCES)
+    sdist_resources.update(item.relative_to("locolab") for item in M20_RESOURCES | PARKOUR_REFERENCES)
     _require_paths(path, members, sdist_resources)
 
 
@@ -75,6 +89,9 @@ def check_installed_resources() -> None:
     package_root = Path(locolab.__file__).resolve().parent
     reference = package_root / JUMP_REFERENCE.relative_to("locolab")
     usd_files = [package_root / item.relative_to("locolab") for item in REQUIRED_USD_FILES]
+
+    for item in PARKOUR_REFERENCES:
+        check_bank_bytes((package_root / item.relative_to("locolab")).read_bytes())
 
     for item in M20_RESOURCES:
         resource = package_root / item.relative_to("locolab")

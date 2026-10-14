@@ -1,3 +1,5 @@
+> 历史 Jump 说明：默认 `omnijump` 入口已改为 GoalGrid。旧权重已归档到工作区外；当前使用方式见 [GoalGrid 整合说明](goalparkour_integration.md)。底层 Jump 代码仍供 Parkour 复用。
+
 # Go2W Jump：平滑 TO 两阶段训练
 
 ## 仓库交付

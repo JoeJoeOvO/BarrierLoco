@@ -1,0 +1,10 @@
+mode: scratch
+checkpoint_loaded: false
+initial_iteration: 0
+optimizer_state_entries: 0
+actor_inputs: 57
+actor_first_weight_sha256: b8ee6981bb31e93e9be7a6f190253e906b0f211bc7adf5e2eb78dfb080d3adf9
+critic_inputs: 312
+critic_first_weight_sha256: 550c6106a3b95ef7fb8dfc17d76df13600e1de98f3e8923ab7df8f8b758dc78c
+task: OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0
+seed: 42

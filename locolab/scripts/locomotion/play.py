@@ -286,6 +286,7 @@ def main():
 
         # Keep narrow-range checkpoints inside their trained vx range during inspection.
         cases = [case for case in velocity_cases() if abs(case[2][0]) <= args_cli.sweep_max_vx]
+    command_name = "parkour" if "Parkour-" in args_cli.task else "base_velocity"
     previous_case = -1
     reset_count = 0
     # simulate environment
@@ -296,6 +297,8 @@ def main():
             label = "random commands"
             if args_cli.task == "OmniBot-Go2W-HighPlatform-MLP-v0":
                 label = f"HighPlatform | {pathlib.Path(resume_path).name} | 30-80 cm"
+            if command_name == "parkour":
+                label = f"Parkour | {pathlib.Path(resume_path).name}"
             case_changed = False
             if args_cli.velocity_sweep:
                 case_number = int(timestep * dt / args_cli.sweep_seconds)
@@ -311,7 +314,7 @@ def main():
                     gait_command(gait, velocity, PHASE_PRESETS)
                 )
                 obs = env.get_observations()
-            cmd = env.unwrapped.command_manager.get_command("base_velocity")[0, :3].clone()
+            cmd = env.unwrapped.command_manager.get_command(command_name)[0, :3].clone()
             # agent stepping
             actions = policy(obs)
             # env stepping

@@ -48,10 +48,30 @@ def test_custom_playback_checkpoint_is_not_shadowed(operation):
     assert "--checkpoint=/tmp/model_79999.pt" in args
 
 
-@pytest.mark.parametrize("skill", ["highplatform", "omnijump"])
+@pytest.mark.parametrize("skill", ["highplatform"])
 def test_other_skills_do_not_load_gait_weights(skill):
     args = dispatch(skill, "train")
     assert "--init_checkpoint" not in args
     assert args[args.index("--num_envs") + 1] == "64"
     args = dispatch(skill, "play")
     assert "gait" not in args[args.index("--checkpoint") + 1]
+
+
+@pytest.mark.parametrize("skill", ["omnijump", "goalparkour"])
+def test_jump_slot_uses_goalgrid_scratch_without_legacy_weights(skill):
+    args = dispatch(skill, "train")
+    assert args[args.index("--task") + 1] == "OmniBot-Go2W-Parkour-GoalGrid-MLP-v0"
+    assert "--from-scratch" in args and "--jump_stage" not in args
+    assert args[args.index("--num_envs") + 1] == "4096"
+    result = subprocess.run(["bash", str(ROOT / "scripts/skill.sh"), skill, "play"], capture_output=True, text=True)
+    assert result.returncode == 2 and "no published trained checkpoint" in result.stderr
+    args = dispatch(skill, "play", "--checkpoint", "/tmp/goalgrid.pt", "--num_envs", "2")
+    assert args.count("--num_envs") == 1 and "--jump_stage" not in args
+
+
+def test_retained_parkour_policy_is_explicit_and_resume_remains_explicit():
+    args = dispatch("parkour", "play")
+    assert "FixedTargetTuned" in args[args.index("--task") + 1]
+    assert "parkour_mlp_20261012" in args[args.index("--checkpoint") + 1]
+    args = dispatch("goalparkour", "train", "--resume", "--checkpoint", "/tmp/goalgrid.pt")
+    assert "--from-scratch" not in args

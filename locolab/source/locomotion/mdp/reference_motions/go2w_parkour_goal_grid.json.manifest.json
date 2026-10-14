@@ -1,0 +1,47 @@
+{
+  "requested_goals": 27,
+  "accepted_goals": 23,
+  "accepted_per_height": {
+    "0.15": 9,
+    "0.2": 7,
+    "0.25": 7
+  },
+  "xy_cells_with_multiple_heights": [
+    [
+      0.4,
+      0.0
+    ],
+    [
+      0.6,
+      -0.15
+    ],
+    [
+      0.6,
+      0.0
+    ],
+    [
+      0.6,
+      0.15
+    ],
+    [
+      0.8,
+      -0.15
+    ],
+    [
+      0.8,
+      0.0
+    ],
+    [
+      0.8,
+      0.15
+    ]
+  ],
+  "training_ready": true,
+  "required_coverage": "at least 3 accepted goals at each height and 4 XY cells with multiple heights",
+  "motions": 30,
+  "bank": "locolab/source/locomotion/mdp/reference_motions/go2w_parkour_goal_grid.json.gz",
+  "sha256": "096cf1a0d110a09d903abcd1247154a95b63171ac510f1c7ff5643ea045c9c7d",
+  "legacy_jump_fraction": 0.25,
+  "new_height_fraction_each": 0.25,
+  "ppo_updates": 0
+}

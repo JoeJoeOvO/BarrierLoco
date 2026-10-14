@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -39,6 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -49,7 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          python -m pip install mypy numpy pytest pytest-cov PyYAML
+          python -m pip install mypy numpy pytest pytest-cov PyYAML trimesh
           python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
 
       - name: Install LocoLab
@@ -72,6 +76,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Set up Python
         uses: actions/setup-python@v6

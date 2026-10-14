@@ -98,7 +98,7 @@ jobs:
           set -euo pipefail
           cd locolab
           tasks=(
-            OmniBot-Go2W-Jump-MLP-v0
+            OmniBot-Go2W-Parkour-GoalGrid-MLP-v0
             OmniBot-Go2W-HighPlatform-MLP-v0
             OmniBot-Go2W-Recover-DreamWaQ-v0
           )

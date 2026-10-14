@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 python_bin="${BARRIERLOCO_PYTHON:-/home/joey/miniconda3/envs/env_isaaclab/bin/python}"
 if [[ $# -lt 2 ]]; then
-    echo "Usage: $0 {highplatform|multiskill|omnijump} {train|play|sweep|record|verify|test|list|python} [arguments]"
+    echo "Usage: $0 {highplatform|multiskill|omnijump|goalparkour|parkour} {train|play|sweep|record|verify|test|list|python} [arguments]"
     exit 2
 fi
 skill="$1"
@@ -32,12 +32,17 @@ case "$skill" in
         bundle=deploy/policy/go2w/multiskill_scratch80k
         model=model_79999.pt
         ;;
-    omnijump)
-        task=OmniBot-Go2W-Jump-MLP-v0
-        bundle=deploy/policy/go2w/jump_smooth_mlp_20261009
-        model=model_9998.pt
-        train_args=(--jump_stage skill)
-        play_args=(--jump_stage speed)
+    omnijump|goalparkour)
+        # New jump slot: the 30-motion GoalGrid has no published final policy yet.
+        task=OmniBot-Go2W-Parkour-GoalGrid-MLP-v0
+        bundle=""
+        model=""
+        ;;
+    parkour)
+        # Explicitly select the retained seven-motion policy; never pass it off as GoalGrid.
+        task=OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0
+        bundle=deploy/policy/go2w/parkour_mlp_20261012
+        model=model_4999.pt
         ;;
     *) echo "Unknown skill: $skill" >&2; exit 2 ;;
 esac
@@ -60,6 +65,13 @@ case "$operation" in
             if [[ "$supplied_init" == false ]]; then
                 train_args+=(--from-scratch)
             fi
+        elif [[ "$task" == *Parkour-* ]]; then
+            train_args=(--validate-finite)
+            has_option --num_envs "$@" || train_args+=(--num_envs 4096)
+            has_option --max_iterations "$@" || train_args+=(--max_iterations 5000)
+            if ! has_option --resume "$@" && ! has_option --from-scratch "$@" && ! has_option --from_scratch "$@"; then
+                train_args+=(--from-scratch)
+            fi
         else
             has_option --num_envs "$@" || train_args+=(--num_envs 64)
         fi
@@ -67,13 +79,23 @@ case "$operation" in
             --logger tensorboard "${train_args[@]}" "$@"
         ;;
     play)
+        if [[ -z "$bundle" ]] && ! has_option --checkpoint "$@"; then
+            echo "GoalGrid has no published trained checkpoint. Supply --checkpoint for your GoalGrid model, or use 'parkour play' for the retained seven-motion policy." >&2
+            exit 2
+        fi
         checkpoint_args=()
         has_option --checkpoint "$@" || checkpoint_args=(--checkpoint "$root/$bundle/$model")
         if [[ "$skill" == multiskill ]]; then
             exec "$python_bin" scripts/multiskill/cmd_sweep.py --extended "${checkpoint_args[@]}" "$@"
         fi
+        env_args=()
+        if ! has_option --num_envs "$@"; then
+            if [[ "$task" == *GoalGrid* ]]; then env_args=(--num_envs 40)
+            elif [[ "$task" == *Parkour-* ]]; then env_args=(--num_envs 10)
+            else env_args=(--num_envs 1); fi
+        fi
         exec "$python_bin" locolab/scripts/locomotion/play.py --task "$task" \
-            --num_envs 1 "${checkpoint_args[@]}" "${play_args[@]}" "$@"
+            "${env_args[@]}" "${checkpoint_args[@]}" "${play_args[@]}" "$@"
         ;;
     sweep|record)
         checkpoint_args=()
@@ -85,6 +107,7 @@ case "$operation" in
         exec "$python_bin" scripts/multiskill/record_cmd_sweep.py "${checkpoint_args[@]}" "$@"
         ;;
     verify)
+        [[ -n "$bundle" ]] || { echo "No published GoalGrid policy to verify." >&2; exit 2; }
         export CUDA_VISIBLE_DEVICES=''
         exec "$python_bin" "$bundle/export_policy.py" --verify-only "$@"
         ;;

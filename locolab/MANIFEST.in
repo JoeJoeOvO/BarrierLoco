@@ -1,5 +1,5 @@
 recursive-include source/locomotion/assets/Go2W/usd *.usd
-recursive-include source/locomotion/mdp/reference_motions *.json
+recursive-include source/locomotion/mdp/reference_motions *.json *.json.gz
 recursive-include source/locomotion/assets/Go2W/urdf *.urdf
 include source/locomotion/mdp/m20/LICENSE
 include source/locomotion/mdp/m20/LICENSE-robot_lab

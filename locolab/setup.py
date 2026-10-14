@@ -25,7 +25,7 @@ PACKAGE_DATA = {
         "Go2W/usd/*.usd",
         "Go2W/usd/configuration/*.usd",
     ],
-    "locolab.source.locomotion.mdp": ["reference_motions/*.json"],
+    "locolab.source.locomotion.mdp": ["reference_motions/*.json", "reference_motions/*.json.gz"],
     "locolab.source.locomotion.mdp.m20": ["LICENSE", "LICENSE-robot_lab", "README.md"],
 }
 

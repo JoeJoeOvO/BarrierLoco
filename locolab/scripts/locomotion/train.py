@@ -61,7 +61,12 @@ parser.add_argument(
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, choices=tasks, help="Name of the task.")
 parser.add_argument("--init_checkpoint", help="Initialize policy weights with a fresh optimizer and curriculum clock.")
-parser.add_argument("--from-scratch", action="store_true", help="Start with random weights; forbid checkpoint loading.")
+parser.add_argument(
+    "--from-scratch",
+    "--from_scratch",
+    action="store_true",
+    help="Start with random weights; forbid checkpoint loading.",
+)
 parser.add_argument(
     "--highplatform-pretrain", action="store_true", help="Use native HighPlatform leg limits for Rough pretraining."
 )
@@ -91,6 +96,17 @@ cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 argcomplete.autocomplete(parser)
 args_cli, hydra_args = parser.parse_known_args()
+parkour_task = args_cli.task in (
+    "OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0",
+    "OmniBot-Go2W-Parkour-GoalGrid-MLP-v0",
+)
+if parkour_task:
+    try:
+        cli_args.validate_scratch_request(args_cli)
+    except ValueError as error:
+        parser.error(str(error))
+    if not (args_cli.from_scratch or args_cli.resume):
+        parser.error("Parkour requires explicit --from-scratch or --resume")
 if args_cli.highplatform_pretrain and args_cli.task != "OmniBot-Go2W-Rough-MLP-v0":
     parser.error("--highplatform-pretrain requires OmniBot-Go2W-Rough-MLP-v0")
 if args_cli.from_scratch and (
@@ -309,6 +325,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         )
     # write git state to logs
     runner.add_git_repo_to_log(__file__)
+    scratch_report = {}
+    if parkour_task and args_cli.from_scratch:
+        scratch_report = cli_args.scratch_initialization_report(runner)
+        scratch_report.update(task=args_cli.task, seed=agent_cfg.seed)
+        print(f"SCRATCH_INITIALIZATION_OK {scratch_report}", flush=True)
     # load the checkpoint
     if args_cli.warm_start_rough:
         from rsl_rl.utils.rough_mlp_warm_start import warm_start_rough_mlp
@@ -343,6 +364,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     resume_path if agent_cfg.resume else (args_cli.init_checkpoint or args_cli.warm_start_rough)
                 ),
                 "explicit_from_scratch": args_cli.from_scratch,
+                **scratch_report,
             },
         )
         dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)

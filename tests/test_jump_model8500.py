@@ -98,7 +98,7 @@ def test_unknown_stage_is_rejected_without_mutation():
     assert cfg.events.reset_base.params["jump_probability"] == 0.2
 
 
-def test_only_retained_jump_task_is_registered():
+def test_legacy_jump_registration_is_replaced_by_parkour():
     tree = ast.parse((TASKS / "__init__.py").read_text())
     registry = {}
     for node in ast.walk(tree):
@@ -106,9 +106,12 @@ def test_only_retained_jump_task_is_registered():
             kwargs = {arg.arg: arg.value for arg in node.keywords}
             if "id" in kwargs and isinstance(kwargs["id"], ast.Constant):
                 registry[kwargs["id"].value] = ast.unparse(kwargs["kwargs"])
-    assert [name for name in registry if "Jump" in name] == ["OmniBot-Go2W-Jump-MLP-v0"]
-    assert "jump_env_cfg:Go2WJumpEnvCfg" in registry["OmniBot-Go2W-Jump-MLP-v0"]
-    assert "jump_env_cfg:Go2WJumpPlayEnvCfg" in registry["OmniBot-Go2W-Jump-MLP-v0"]
+    assert not [name for name in registry if "Jump" in name]
+    assert "parkour_goal_grid_env_cfg:Go2WParkourGoalGridEnvCfg" in registry["OmniBot-Go2W-Parkour-GoalGrid-MLP-v0"]
+    assert (
+        "parkour_env_cfg:Go2WParkourFixedTargetTunedPlayEnvCfg"
+        in registry["OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0"]
+    )
 
 
 def test_reference_and_historical_limits_are_preserved():
