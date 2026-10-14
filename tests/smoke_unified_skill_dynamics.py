@@ -16,9 +16,9 @@ args = parser.parse_args()
 app = AppLauncher(args).app
 
 try:
-    import locolab.source.locomotion.tasks  # noqa: F401
     from isaaclab_tasks.utils.parse_cfg import load_cfg_from_registry
 
+    import locolab.source.locomotion.tasks  # noqa: F401
     from locolab.source.locomotion.assets.robot import GO2W_CFG
     from locolab.source.locomotion.tasks.Go2W.rough_env_cfg import Go2WRoughEnvCfg
 

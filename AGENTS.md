@@ -2,8 +2,8 @@
 
 ## Project Structure & Module Organization
 
-`locolab/` contains the Isaac Lab training stack: RL algorithms in `locolab/rsl_rl/`, task and asset definitions in `locolab/source/locomotion/`, and entry scripts in `locolab/scripts/locomotion/`.  
-`deploy/` contains sim-to-real code: policy configs in `deploy/policy/`, C++ runtime and robot interfaces in `deploy/src/`, and build helpers in `deploy/build.sh`.  
+`locolab/` contains the Isaac Lab training stack: RL algorithms in `locolab/rsl_rl/`, task and asset definitions in `locolab/source/locomotion/`, and entry scripts in `locolab/scripts/locomotion/`.
+`deploy/` contains sim-to-real code: policy configs in `deploy/policy/`, C++ runtime and robot interfaces in `deploy/src/`, and build helpers in `deploy/build.sh`.
 `simulation/` is reserved for lightweight sim tooling but is currently minimal; the active MuJoCo simulator entrypoint is `deploy/src/rl_deploy/src/rl_sim_mujoco.cpp`.
 
 ## Build, Test, and Development Commands

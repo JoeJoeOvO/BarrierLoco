@@ -25,49 +25,59 @@ class VelocityPanel:
         self.values = []
         self.ticks = []
         self.last_update = -1.0
-        with (frame if frame is not None else self.window.frame):
-            with ui.ScrollingFrame(horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF):
-                with ui.VStack(spacing=3, height=0):
-                    ui.Label("VELOCITY TRACKING", height=20, style={"color": TEXT, "font_size": 16})
-                    self.case = ui.Label("Waiting for simulation", height=22, style={"color": MUTED})
-                    with ui.HStack(height=18):
-                        ui.Label("  CMD", style={"color": CMD})
-                        ui.Label("  ACTUAL", style={"color": ACTUAL})
-                        ui.Label("Body frame | 25 s", style={"color": MUTED})
-                    for name, unit in (("vx", "m/s"), ("vy", "m/s"), ("wz", "rad/s")):
-                        with ui.HStack(height=21, spacing=4):
-                            ui.Label(f"{name}  {unit}", width=80, style={"color": TEXT, "font_size": 14})
-                            command = ui.Label("+0.000", style={"color": CMD, "font_size": 14})
-                            actual = ui.Label("+0.000", style={"color": ACTUAL, "font_size": 14})
-                            error = ui.Label("err 0.000", width=95, style={"color": MUTED})
-                            self.values.append((command, actual, error))
-                        with ui.HStack(height=60, spacing=4):
-                            with ui.VStack(width=38):
-                                upper = ui.Label("+1.0", height=12, style={"color": MUTED, "font_size": 10})
-                                ui.Spacer()
-                                ui.Label("0", height=12, style={"color": MUTED, "font_size": 10})
-                                ui.Spacer()
-                                lower = ui.Label("-1.0", height=12, style={"color": MUTED, "font_size": 10})
-                                self.ticks.append((upper, lower))
-                            with ui.ZStack():
-                                ui.Rectangle(style={"background_color": 0xFF241C14, "border_radius": 4})
-                                with ui.VStack():
-                                    ui.Line(height=1, style={"color": GRID})
-                                    ui.Spacer()
-                                    ui.Line(height=1, style={"color": GRID})
-                                    ui.Spacer()
-                                    ui.Line(height=1, style={"color": GRID})
-                                pair = []
-                                for color in (CMD, ACTUAL):
-                                    pair.append(ui.Plot(ui.Type.LINE, -1.0, 1.0, 0.0, 0.0,
-                                                        style={"color": color, "background_color": 0x0}))
-                                self.plots.append(pair)
-                        with ui.HStack(height=12):
-                            ui.Spacer(width=42)
-                            ui.Label("-25 s", style={"color": MUTED, "font_size": 10})
-                            ui.Label("-12.5 s", style={"color": MUTED, "font_size": 10})
-                            ui.Label("now", width=30, style={"color": MUTED, "font_size": 10})
-                    self.status = ui.Label("", height=24, word_wrap=True, style={"color": MUTED})
+        with (
+            frame if frame is not None else self.window.frame,
+            ui.ScrollingFrame(horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF),
+            ui.VStack(spacing=3, height=0),
+        ):
+            ui.Label("VELOCITY TRACKING", height=20, style={"color": TEXT, "font_size": 16})
+            self.case = ui.Label("Waiting for simulation", height=22, style={"color": MUTED})
+            with ui.HStack(height=18):
+                ui.Label("  CMD", style={"color": CMD})
+                ui.Label("  ACTUAL", style={"color": ACTUAL})
+                ui.Label("Body frame | 25 s", style={"color": MUTED})
+            for name, unit in (("vx", "m/s"), ("vy", "m/s"), ("wz", "rad/s")):
+                with ui.HStack(height=21, spacing=4):
+                    ui.Label(f"{name}  {unit}", width=80, style={"color": TEXT, "font_size": 14})
+                    command = ui.Label("+0.000", style={"color": CMD, "font_size": 14})
+                    actual = ui.Label("+0.000", style={"color": ACTUAL, "font_size": 14})
+                    error = ui.Label("err 0.000", width=95, style={"color": MUTED})
+                    self.values.append((command, actual, error))
+                with ui.HStack(height=60, spacing=4):
+                    with ui.VStack(width=38):
+                        upper = ui.Label("+1.0", height=12, style={"color": MUTED, "font_size": 10})
+                        ui.Spacer()
+                        ui.Label("0", height=12, style={"color": MUTED, "font_size": 10})
+                        ui.Spacer()
+                        lower = ui.Label("-1.0", height=12, style={"color": MUTED, "font_size": 10})
+                        self.ticks.append((upper, lower))
+                    with ui.ZStack():
+                        ui.Rectangle(style={"background_color": 0xFF241C14, "border_radius": 4})
+                        with ui.VStack():
+                            ui.Line(height=1, style={"color": GRID})
+                            ui.Spacer()
+                            ui.Line(height=1, style={"color": GRID})
+                            ui.Spacer()
+                            ui.Line(height=1, style={"color": GRID})
+                        pair = []
+                        for color in (CMD, ACTUAL):
+                            pair.append(
+                                ui.Plot(
+                                    ui.Type.LINE,
+                                    -1.0,
+                                    1.0,
+                                    0.0,
+                                    0.0,
+                                    style={"color": color, "background_color": 0x0},
+                                )
+                            )
+                        self.plots.append(pair)
+                with ui.HStack(height=12):
+                    ui.Spacer(width=42)
+                    ui.Label("-25 s", style={"color": MUTED, "font_size": 10})
+                    ui.Label("-12.5 s", style={"color": MUTED, "font_size": 10})
+                    ui.Label("now", width=30, style={"color": MUTED, "font_size": 10})
+            self.status = ui.Label("", height=24, word_wrap=True, style={"color": MUTED})
         self.docking = asyncio.ensure_future(self._dock())
 
     async def _dock(self):

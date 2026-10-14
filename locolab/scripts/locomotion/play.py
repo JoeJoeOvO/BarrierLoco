@@ -56,8 +56,12 @@ parser.add_argument(
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument("--highplatform-pretrain", action="store_true", help="Replay Rough with its HighPlatform pretraining leg limits.")
-parser.add_argument("--offline-visuals", action="store_true", help="Use local terrain material and texture-free lighting.")
+parser.add_argument(
+    "--highplatform-pretrain", action="store_true", help="Replay Rough with its HighPlatform pretraining leg limits."
+)
+parser.add_argument(
+    "--offline-visuals", action="store_true", help="Use local terrain material and texture-free lighting."
+)
 parser.add_argument("--jump_stage", choices=("skill", "speed"), help="Use the matching Go2W Jump stage semantics.")
 parser.add_argument(
     "--use_pretrained_checkpoint",
@@ -69,8 +73,12 @@ parser.add_argument("--follow-camera", action="store_true", help="Track robot ze
 parser.add_argument("--velocity-sweep", action="store_true", help="Cycle Go2W gait / omnidirectional velocity cases.")
 parser.add_argument("--live-plot", action="store_true", help="Dock live velocity curves and values inside Isaac Sim.")
 parser.add_argument("--sweep-seconds", type=float, default=6.0, help="Simulation seconds per velocity case.")
-parser.add_argument("--sweep-max-vx", type=float, default=5.0,
-                    help="Filter sweep cases by absolute vx; use 1 for the original-range control model.")
+parser.add_argument(
+    "--sweep-max-vx",
+    type=float,
+    default=5.0,
+    help="Filter sweep cases by absolute vx; use 1 for the original-range control model.",
+)
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -262,6 +270,7 @@ def main():
     if args_cli.live_plot:
         import csv
         from datetime import datetime
+
         from locolab.source.locomotion.utils.velocity_panel import VelocityPanel
 
         telemetry_path = pathlib.Path(log_dir) / f"velocity_live_{datetime.now():%Y%m%d_%H%M%S}.csv"
@@ -318,7 +327,11 @@ def main():
                 values = [float("nan")] * 3 if reset or case_changed else actual.tolist()
                 writer.writerow([timestep * dt, label, *cmd.tolist(), *values, reset_count])
                 velocity_panel.update(
-                    timestep * dt, label, cmd.tolist(), actual.tolist(), reset_count,
+                    timestep * dt,
+                    label,
+                    cmd.tolist(),
+                    actual.tolist(),
+                    reset_count,
                     clear=reset or case_changed,
                 )
         timestep += 1

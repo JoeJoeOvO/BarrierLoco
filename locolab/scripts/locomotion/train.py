@@ -62,7 +62,9 @@ parser.add_argument("--num_envs", type=int, default=None, help="Number of enviro
 parser.add_argument("--task", type=str, default=None, choices=tasks, help="Name of the task.")
 parser.add_argument("--init_checkpoint", help="Initialize policy weights with a fresh optimizer and curriculum clock.")
 parser.add_argument("--from-scratch", action="store_true", help="Start with random weights; forbid checkpoint loading.")
-parser.add_argument("--highplatform-pretrain", action="store_true", help="Use native HighPlatform leg limits for Rough pretraining.")
+parser.add_argument(
+    "--highplatform-pretrain", action="store_true", help="Use native HighPlatform leg limits for Rough pretraining."
+)
 parser.add_argument("--validate-finite", action="store_true", help="Reject non-finite training data.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
@@ -91,7 +93,9 @@ argcomplete.autocomplete(parser)
 args_cli, hydra_args = parser.parse_known_args()
 if args_cli.highplatform_pretrain and args_cli.task != "OmniBot-Go2W-Rough-MLP-v0":
     parser.error("--highplatform-pretrain requires OmniBot-Go2W-Rough-MLP-v0")
-if args_cli.from_scratch and (args_cli.resume or args_cli.init_checkpoint or args_cli.warm_start_rough or args_cli.checkpoint):
+if args_cli.from_scratch and (
+    args_cli.resume or args_cli.init_checkpoint or args_cli.warm_start_rough or args_cli.checkpoint
+):
     parser.error("--from-scratch cannot be combined with checkpoint initialization or resume")
 if args_cli.init_checkpoint and (args_cli.resume or args_cli.warm_start_rough or args_cli.jump_stage):
     parser.error("--init_checkpoint cannot be combined with resume, Rough warm start, or jump stages")
@@ -327,13 +331,20 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # dump the configuration into log-directory
     if is_primary:
         # Save explicit provenance: agent.yaml alone does not record --init_checkpoint.
-        dump_yaml(os.path.join(log_dir, "params", "initialization.yaml"), {
-            "mode": "resume" if agent_cfg.resume else (
-                "initialize" if args_cli.init_checkpoint or args_cli.warm_start_rough else "random"
-            ),
-            "checkpoint": resume_path if agent_cfg.resume else (args_cli.init_checkpoint or args_cli.warm_start_rough),
-            "explicit_from_scratch": args_cli.from_scratch,
-        })
+        dump_yaml(
+            os.path.join(log_dir, "params", "initialization.yaml"),
+            {
+                "mode": (
+                    "resume"
+                    if agent_cfg.resume
+                    else ("initialize" if args_cli.init_checkpoint or args_cli.warm_start_rough else "random")
+                ),
+                "checkpoint": (
+                    resume_path if agent_cfg.resume else (args_cli.init_checkpoint or args_cli.warm_start_rough)
+                ),
+                "explicit_from_scratch": args_cli.from_scratch,
+            },
+        )
         dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
         dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
 

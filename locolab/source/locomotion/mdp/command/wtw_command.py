@@ -7,8 +7,8 @@ import math
 import torch
 from isaaclab.managers import CommandTerm
 
-from ..wtw_kinematics import LEG_JOINT_NAMES, height_reference_pose
 from ..wtw_curriculum import curriculum_limits, sample_curriculum_commands, validate_schedule
+from ..wtw_kinematics import LEG_JOINT_NAMES, height_reference_pose
 from ..wtw_math import (
     FOOT_NAMES,
     PHASE_PRESETS,
@@ -171,7 +171,9 @@ class WTWCommand(CommandTerm):
             sample[:, index].uniform_(*getattr(self.cfg, name))
         if getattr(self.cfg, "curriculum_enabled", False):
             sample[:, 0], sample[:, 9] = sample_curriculum_commands(
-                count, self.device, self.curriculum_step / self.cfg.curriculum_steps_per_iteration,
+                count,
+                self.device,
+                self.curriculum_step / self.cfg.curriculum_steps_per_iteration,
                 self.cfg.curriculum_schedule,
             )
         presets = torch.tensor(list(PHASE_PRESETS.values()), device=self.device)

@@ -22,7 +22,11 @@ sys.path.insert(0, str(ROOT / "locolab"))
 
 from rsl_rl.modules import ActorCritic
 
-SOURCE_HASHES = {'model_79999.pt': '2133340f4cd89853140a17941f8033b8c432ac5c1738774337e40a10175d1d00', 'params/agent.yaml': '92e79c7f50284ab2a30f331d75de9b175f0aeee1c1b7a0f16bbb235e66e59ceb', 'params/env.yaml': '6c4042a80e170d9e2348af585bc6b6148da7c1ef27a9cdfbd48e147805629094'}
+SOURCE_HASHES = {
+    "model_79999.pt": "2133340f4cd89853140a17941f8033b8c432ac5c1738774337e40a10175d1d00",
+    "params/agent.yaml": "92e79c7f50284ab2a30f331d75de9b175f0aeee1c1b7a0f16bbb235e66e59ceb",
+    "params/env.yaml": "6c4042a80e170d9e2348af585bc6b6148da7c1ef27a9cdfbd48e147805629094",
+}
 
 
 def sha256(path):

@@ -5,9 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import math
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
 from swing_height import SwingHeightTracker, format_heights_cm
 
@@ -22,8 +22,14 @@ def build_cases(extended=False):
         if gait == "rolling":
             values["swing"] = 0.0
         command = [
-            values["vx"], values["vy"], values["yaw"], values["height"], values["frequency"],
-            *presets[gait], 1.0 if gait == "rolling" else 0.5, values["swing"],
+            values["vx"],
+            values["vy"],
+            values["yaw"],
+            values["height"],
+            values["frequency"],
+            *presets[gait],
+            1.0 if gait == "rolling" else 0.5,
+            values["swing"],
         ]
         cases.append(dict(gait=gait, group=group, command=command))
 
@@ -38,10 +44,10 @@ def build_cases(extended=False):
         for frequency in (1.5, 2.5, 4.0):
             add(gait, "Frequency", frequency=frequency)
     for gait in ("trot", "bound"):
-        for swing in ((0.0, 0.05, 0.10, 0.12, 0.15) if extended else (0.0, 0.05, 0.10)):
+        for swing in (0.0, 0.05, 0.10, 0.12, 0.15) if extended else (0.0, 0.05, 0.10):
             add(gait, "Swing height", swing=swing)
     for gait in presets:
-        for vx in (() if extended else (-0.5, 0.0, 1.0)):
+        for vx in () if extended else (-0.5, 0.0, 1.0):
             add(gait, "Forward / reverse", vx=vx)
         for vy in (-0.3, 0.3):
             add(gait, "Sideways", vx=0.0, vy=vy)
@@ -61,15 +67,19 @@ def main():
     parser.add_argument("--case-limit", type=int, default=0)
     parser.add_argument("--cycles", type=int, default=0, help="0 repeats until the window is closed")
     parser.add_argument("--start-case", type=int, default=1)
-    parser.add_argument("--extended", action="store_true", help="Sweep the curriculum range: vx +/-5 m/s, swing up to .15 m")
+    parser.add_argument(
+        "--extended", action="store_true", help="Sweep the curriculum range: vx +/-5 m/s, swing up to .15 m"
+    )
     parser.add_argument("--output-dir", type=Path, default=root / "outputs/cmd_sweep")
-    parser.add_argument("--reset-between-cases", action="store_true", help="Use independent starts instead of continuous transitions")
+    parser.add_argument(
+        "--reset-between-cases", action="store_true", help="Use independent starts instead of continuous transitions"
+    )
     parser.add_argument("--checkpoint", default=str(repo / "deploy/policy/go2w/multiskill_scratch80k/model_79999.pt"))
     AppLauncher.add_app_launcher_args(parser)
     args = parser.parse_args()
     cases = build_cases(args.extended)
     if args.case_limit:
-        cases = cases[:args.case_limit]
+        cases = cases[: args.case_limit]
     if not math.isfinite(args.seconds) or args.seconds <= 0 or not 1 <= args.start_case <= len(cases):
         parser.error("seconds must be positive and start-case must refer to an existing case")
     if args.case_limit < 0 or args.cycles < 0:
@@ -80,21 +90,32 @@ def main():
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
     (output / "cases.json").write_text(json.dumps(cases, indent=2) + "\n")
-    (output / "session.json").write_text(json.dumps({"checkpoint": str(Path(args.checkpoint).resolve()),
-        "extended": args.extended, "seconds": args.seconds, "continuous": not args.reset_between_cases,
-        "started_at": time.strftime("%Y-%m-%d %H:%M:%S")}, indent=2) + "\n")
+    (output / "session.json").write_text(
+        json.dumps(
+            {
+                "checkpoint": str(Path(args.checkpoint).resolve()),
+                "extended": args.extended,
+                "seconds": args.seconds,
+                "continuous": not args.reset_between_cases,
+                "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     try:
+        import cli_args
         import gymnasium as gym
-        import torch
         import isaaclab_tasks  # noqa: F401
+        import torch
         from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
         from rsl_rl.runners import OnPolicyRunner
-        import cli_args
+
         import locolab.source.locomotion.tasks  # noqa: F401
-        from locolab.source.locomotion.utils.parser_cfg import parse_env_cfg
-        from locolab.source.locomotion.utils.video import configure_robot_follow_view
         from locolab.source.locomotion.mdp.wtw_math import validate_commands
         from locolab.source.locomotion.mdp.wtw_rewards import _wheel_state
+        from locolab.source.locomotion.utils.parser_cfg import parse_env_cfg
+        from locolab.source.locomotion.utils.video import configure_robot_follow_view
 
         validate_commands(torch.tensor([case["command"] for case in cases]))
         task = "OmniBot-Go2W-Gait-Curriculum-Flat-MLP-v0" if args.extended else "OmniBot-Go2W-Gait-Flat-MLP-v0"
@@ -111,6 +132,7 @@ def main():
         cfg.viewer.eye = (1.8, 2.0, 1.0)
         cfg.viewer.lookat = (0.0, 0.0, 0.0)
         from isaaclab_tasks.utils import load_cfg_from_registry
+
         agent_cfg = load_cfg_from_registry(task, "rsl_rl_cfg_entry_point")
         agent_cfg.device = args.device
         env = RslRlVecEnvWrapper(gym.make(task, cfg=cfg), clip_actions=agent_cfg.clip_actions)
@@ -131,24 +153,46 @@ def main():
 
         if not args.headless:
             import omni.ui as ui
-            window = ui.Window("Go2W | LIVE COMMAND | " + Path(args.checkpoint).name, width=500, height=850)
-            with window.frame:
-                with ui.ScrollingFrame():
-                    with ui.VStack(spacing=5, height=0, style={"font_size": 15}):
-                        for key in ("title", "progress", "speed", "height", "phase", "raw", "actual", "wheel_height", "swing_peak", "resets"):
-                            labels[key] = ui.Label("Loading...", word_wrap=True, height=32)
-                        with ui.HStack(height=32, spacing=6):
-                            ui.Button("Previous", clicked_fn=lambda: advance(-1))
-                            ui.Button("Next", clicked_fn=lambda: advance(1))
-                            ui.Button("Hold / Auto", clicked_fn=toggle_hold)
-                            ui.Button("Stop", clicked_fn=lambda: state.update(quit=True))
-                        mode_text = "Independent starts." if args.reset_between_cases else "CONTINUOUS: switch CMD only; no timeout reset."
-                        ui.Label(mode_text + "\nWheel order: FR / FL / RR / RL. Peaks: last complete commanded swing; -- = pending.", word_wrap=True)
 
-                        # Keep the V1 command/height inspector and the user's docked velocity curves together.
-                        chart_frame = ui.Frame(height=420)
-                        from locolab.source.locomotion.utils.velocity_panel import VelocityPanel
-                        panel = VelocityPanel(window=window, frame=chart_frame)
+            window = ui.Window("Go2W | LIVE COMMAND | " + Path(args.checkpoint).name, width=500, height=850)
+            with (
+                window.frame,
+                ui.ScrollingFrame(),
+                ui.VStack(spacing=5, height=0, style={"font_size": 15}),
+            ):
+                for key in (
+                    "title",
+                    "progress",
+                    "speed",
+                    "height",
+                    "phase",
+                    "raw",
+                    "actual",
+                    "wheel_height",
+                    "swing_peak",
+                    "resets",
+                ):
+                    labels[key] = ui.Label("Loading...", word_wrap=True, height=32)
+                with ui.HStack(height=32, spacing=6):
+                    ui.Button("Previous", clicked_fn=lambda: advance(-1))
+                    ui.Button("Next", clicked_fn=lambda: advance(1))
+                    ui.Button("Hold / Auto", clicked_fn=toggle_hold)
+                    ui.Button("Stop", clicked_fn=lambda: state.update(quit=True))
+                mode_text = (
+                    "Independent starts."
+                    if args.reset_between_cases
+                    else "CONTINUOUS: switch CMD only; no timeout reset."
+                )
+                ui.Label(
+                    mode_text + "\nWheel order: FR / FL / RR / RL. Peaks: last complete commanded swing; -- = pending.",
+                    word_wrap=True,
+                )
+
+                # Keep the V1 command/height inspector and the user's docked velocity curves together.
+                chart_frame = ui.Frame(height=420)
+                from locolab.source.locomotion.utils.velocity_panel import VelocityPanel
+
+                panel = VelocityPanel(window=window, frame=chart_frame)
         dt = env.unwrapped.step_dt
         elapsed = 0.0
         resets = 0
@@ -169,11 +213,17 @@ def main():
                     state["change"] = False
                     case = cases[state["index"]]
                     command = torch.tensor(case["command"], device=env.unwrapped.device)
-                    event = dict(event="case_start", case=state["index"] + 1, total=len(cases), **case,
-                                 continuous=not args.reset_between_cases,
-                                 episode_steps=int(env.unwrapped.episode_length_buf[0]),
-                                 position=term.robot.data.root_pos_w[0].tolist(),
-                                 phase=float(term.phase[0]), total_resets=total_resets)
+                    event = dict(
+                        event="case_start",
+                        case=state["index"] + 1,
+                        total=len(cases),
+                        **case,
+                        continuous=not args.reset_between_cases,
+                        episode_steps=int(env.unwrapped.episode_length_buf[0]),
+                        position=term.robot.data.root_pos_w[0].tolist(),
+                        phase=float(term.phase[0]),
+                        total_resets=total_resets,
+                    )
                     events.write(json.dumps(event) + "\n")
                     events.flush()
                     print("CMD_SWEEP " + json.dumps(event), flush=True)
@@ -197,41 +247,68 @@ def main():
                 updates += 1
                 if panel is not None:
                     data = term.robot.data
-                    actual = [float(data.root_lin_vel_b[0, 0]), float(data.root_lin_vel_b[0, 1]),
-                              float(data.root_ang_vel_b[0, 2])]
+                    actual = [
+                        float(data.root_lin_vel_b[0, 0]),
+                        float(data.root_lin_vel_b[0, 1]),
+                        float(data.root_ang_vel_b[0, 2]),
+                    ]
                     # Reset measurements are post-teleport: clear the curves instead of drawing them.
-                    panel.update(updates * dt, f"{state['index'] + 1}/{len(cases)} {case['gait']} | {case['group']}",
-                                 case["command"][:3], [float("nan")] * 3 if did_reset else actual,
-                                 total_resets, clear=did_reset or (args.reset_between_cases and elapsed <= dt))
+                    panel.update(
+                        updates * dt,
+                        f"{state['index'] + 1}/{len(cases)} {case['gait']} | {case['group']}",
+                        case["command"][:3],
+                        [float("nan")] * 3 if did_reset else actual,
+                        total_resets,
+                        clear=did_reset or (args.reset_between_cases and elapsed <= dt),
+                    )
                 if updates % 5 == 0 or elapsed <= dt or did_reset:
                     values = term.command[0].tolist() if not did_reset else command.tolist()
                     data = term.robot.data
                     actual_height = float(data.root_pos_w[0, 2] - env.unwrapped.scene.env_origins[0, 2])
                     velocity = data.root_lin_vel_b[0].tolist()
                     actual_yaw = float(data.root_ang_vel_b[0, 2])
-                    status = dict(case=state["index"] + 1, total=len(cases), **case,
-                                  elapsed_s=elapsed, hold=state["hold"], resets=resets,
-                                  continuous=not args.reset_between_cases, total_resets=total_resets,
-                                  episode_steps=int(env.unwrapped.episode_length_buf[0]),
-                                  actual_height_m=actual_height, actual_velocity_mps=velocity,
-                                  wheel_order=["FR", "FL", "RR", "RL"],
-                                  actual_wheel_bottom_height_m=wheel_heights,
-                                  last_complete_swing_peak_m=swing_peaks,
-                                  actual_yaw_rad_s=actual_yaw, wall_time=time.time())
+                    status = dict(
+                        case=state["index"] + 1,
+                        total=len(cases),
+                        **case,
+                        elapsed_s=elapsed,
+                        hold=state["hold"],
+                        resets=resets,
+                        continuous=not args.reset_between_cases,
+                        total_resets=total_resets,
+                        episode_steps=int(env.unwrapped.episode_length_buf[0]),
+                        actual_height_m=actual_height,
+                        actual_velocity_mps=velocity,
+                        wheel_order=["FR", "FL", "RR", "RL"],
+                        actual_wheel_bottom_height_m=wheel_heights,
+                        last_complete_swing_peak_m=swing_peaks,
+                        actual_yaw_rad_s=actual_yaw,
+                        wall_time=time.time(),
+                    )
                     temporary = status_path.with_suffix(".tmp")
                     temporary.write_text(json.dumps(status, indent=2) + "\n")
                     temporary.replace(status_path)
                     texts = dict(
                         title=f"{state['index'] + 1}/{len(cases)}   {case['gait'].upper()}  |  {case['group']}",
-                        progress=f"{'HOLD' if state['hold'] else 'AUTO'}  {elapsed:.1f} / {args.seconds:.1f} s  |  cycle {cycles + 1}",
+                        progress=(
+                            f"{'HOLD' if state['hold'] else 'AUTO'}  {elapsed:.1f} / {args.seconds:.1f} s"
+                            f"  |  cycle {cycles + 1}"
+                        ),
                         speed=f"CMD vx {values[0]:+.2f}   vy {values[1]:+.2f} m/s   yaw {values[2]:+.2f} rad/s",
-                        height=f"Height {100*values[3]:.0f} cm   Freq {values[4]:.1f} Hz   Swing {100*values[9]:.1f} cm",
+                        height=(
+                            f"Height {100*values[3]:.0f} cm   Freq {values[4]:.1f} Hz"
+                            f"   Swing {100*values[9]:.1f} cm"
+                        ),
                         phase=f"Phase [{values[5]:.2f}, {values[6]:.2f}, {values[7]:.2f}]   Duty {values[8]:.2f}",
                         raw="cmd = [" + ", ".join(f"{value:g}" for value in case["command"]) + "]",
-                        actual=f"ACTUAL height {100*actual_height:.1f} cm   vx {velocity[0]:+.2f}   vy {velocity[1]:+.2f}   yaw {actual_yaw:+.2f}",
+                        actual=(
+                            f"ACTUAL height {100*actual_height:.1f} cm   vx {velocity[0]:+.2f}"
+                            f"   vy {velocity[1]:+.2f}   yaw {actual_yaw:+.2f}"
+                        ),
                         wheel_height="ACTUAL wheel height cm: " + format_heights_cm(wheel_heights),
                         swing_peak="ACTUAL last swing peak cm: " + format_heights_cm(swing_peaks),
-                        resets=f"Failure resets: case {resets} / total {total_resets}" + ("  RESET" if did_reset else ""),
+                        resets=f"Failure resets: case {resets} / total {total_resets}"
+                        + ("  RESET" if did_reset else ""),
                     )
                     for key, label in labels.items():
                         label.text = texts[key]

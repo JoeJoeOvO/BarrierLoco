@@ -4,7 +4,6 @@ import math
 
 import torch
 
-
 DEFAULT_SCHEDULE = (
     (0, 1.0, 0.10),
     (2000, 1.5, 0.12),

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from test_go2w_wtw import command_term  # noqa: F401
+pytest_plugins = ["test_go2w_wtw"]
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +25,7 @@ def test_curriculum_milestones_interpolate_and_hold():
     assert curriculum.curriculum_limits(30000) == pytest.approx((5.0, 0.15))
 
 
-@pytest.mark.parametrize("schedule", [(), ((1, 1, .1),), ((0, 1, .1), (0, 2, .15)), ((0, 2, .1), (10, 1, .15))])
+@pytest.mark.parametrize("schedule", [(), ((1, 1, 0.1),), ((0, 1, 0.1), (0, 2, 0.15)), ((0, 2, 0.1), (10, 1, 0.15))])
 def test_invalid_schedules_rejected(schedule):
     with pytest.raises(ValueError):
         curriculum.validate_schedule(schedule)
@@ -35,14 +35,14 @@ def test_sampling_retains_easy_commands_and_limits_extreme_exposure():
     torch.manual_seed(314)
     vx, swing = curriculum.sample_curriculum_commands(100000, "cpu", 30000)
     assert vx.min() >= -5 and vx.max() <= 5
-    assert swing.min() >= 0 and swing.max() <= .15
+    assert swing.min() >= 0 and swing.max() <= 0.15
     # 20% full-band exposure, of which 60% lies beyond |vx|=2.
-    assert float((vx.abs() > 2).float().mean()) == pytest.approx(.12, abs=.006)
-    assert float((swing > .1).float().mean()) == pytest.approx(1 / 6, abs=.006)
-    assert float((vx < -4).float().mean()) > .015
-    assert float((vx > 4).float().mean()) > .015
+    assert float((vx.abs() > 2).float().mean()) == pytest.approx(0.12, abs=0.006)
+    assert float((swing > 0.1).float().mean()) == pytest.approx(1 / 6, abs=0.006)
+    assert float((vx < -4).float().mean()) > 0.015
+    assert float((vx > 4).float().mean()) > 0.015
     vx, swing = curriculum.sample_curriculum_commands(10000, "cpu", 0)
-    assert vx.abs().max() <= 1 and swing.max() <= .1
+    assert vx.abs().max() <= 1 and swing.max() <= 0.1
 
 
 def test_command_curriculum_survives_resets_and_resumes_without_changing_robot(command_term):
@@ -51,7 +51,7 @@ def test_command_curriculum_survives_resets_and_resumes_without_changing_robot(c
     term.cfg.curriculum_schedule = curriculum.DEFAULT_SCHEDULE
     term.cfg.curriculum_steps_per_iteration = 24
     term.cfg.lin_vel_x = (-5.0, 5.0)
-    term.cfg.footswing_height = (0.0, .15)
+    term.cfg.footswing_height = (0.0, 0.15)
     term._env.common_step_counter = 20000 * 24
     original_pose = term.robot.data.default_joint_pos.clone()
     original_limits = term.robot.data.soft_joint_pos_limits.clone()
@@ -68,6 +68,6 @@ def test_command_curriculum_survives_resets_and_resumes_without_changing_robot(c
     metrics = term.reset()
     assert metrics["curriculum_iteration"] == 20001
     assert metrics["curriculum_vx_limit"] == 5
-    assert metrics["curriculum_swing_limit"] == .15
+    assert metrics["curriculum_swing_limit"] == 0.15
     with pytest.raises(ValueError):
         term.load_curriculum_state_dict({**state, "steps_per_iteration": 32})

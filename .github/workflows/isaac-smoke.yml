@@ -1,10 +1,8 @@
 name: Isaac smoke
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  # Requires an explicitly configured Isaac Lab GPU runner.
+  # Keep manual until this repository has one; hosted CI runs CPU checks.
   workflow_dispatch:
     inputs:
       device:
@@ -35,7 +33,7 @@ jobs:
     timeout-minutes: 90
     env:
       MIN_ACTIONS_RUNNER_VERSION: 2.327.1
-      ISAACLAB_PYTHON: ${{ vars.ISAACLAB_PYTHON || '/home/sshang/miniconda3/envs/env_isaaclab/bin/python' }}
+      ISAACLAB_PYTHON: ${{ vars.ISAACLAB_PYTHON || '/home/joey/miniconda3/envs/env_isaaclab/bin/python' }}
       SMOKE_DEVICE: ${{ inputs.device || 'cuda:0' }}
       SMOKE_NUM_ENVS: ${{ inputs.num_envs || '8' }}
       PYTHONDONTWRITEBYTECODE: "1"

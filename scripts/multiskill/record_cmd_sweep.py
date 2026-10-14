@@ -6,9 +6,9 @@ import argparse
 import csv
 import json
 import math
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
 from cmd_sweep import build_cases
 from swing_height import SwingHeightTracker, format_heights_cm
@@ -22,9 +22,7 @@ def main():
     import cli_args
     from isaaclab.app import AppLauncher
 
-    default_model = (
-        repo / "deploy/policy/go2w/multiskill_scratch80k/model_79999.pt"
-    )
+    default_model = repo / "deploy/policy/go2w/multiskill_scratch80k/model_79999.pt"
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, default=default_model)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -93,12 +91,31 @@ def main():
         title_font = ImageFont.truetype(font_path, 28)
         body_font = ImageFont.truetype(font_path, 20)
         fields = [
-            "frame", "case", "gait", "group", "case_time_s", "vx_cmd", "actual_vx_mps",
-            "vy_cmd", "actual_vy_mps", "yaw_cmd", "actual_yaw_rad_s",
-            "body_height_cmd_m", "actual_body_height_m", "frequency_hz", "swing_cmd_m",
-            "wheel_height_fr_m", "wheel_height_fl_m", "wheel_height_rr_m", "wheel_height_rl_m",
-            "swing_peak_fr_m", "swing_peak_fl_m", "swing_peak_rr_m", "swing_peak_rl_m",
-            "failure_reset", "total_failure_resets",
+            "frame",
+            "case",
+            "gait",
+            "group",
+            "case_time_s",
+            "vx_cmd",
+            "actual_vx_mps",
+            "vy_cmd",
+            "actual_vy_mps",
+            "yaw_cmd",
+            "actual_yaw_rad_s",
+            "body_height_cmd_m",
+            "actual_body_height_m",
+            "frequency_hz",
+            "swing_cmd_m",
+            "wheel_height_fr_m",
+            "wheel_height_fl_m",
+            "wheel_height_rr_m",
+            "wheel_height_rl_m",
+            "swing_peak_fr_m",
+            "swing_peak_fl_m",
+            "swing_peak_rr_m",
+            "swing_peak_rl_m",
+            "failure_reset",
+            "total_failure_resets",
         ]
         results = []
         total_resets = 0
@@ -107,8 +124,13 @@ def main():
         started_at = time.time()
         with (
             imageio.get_writer(
-                str(video_path), fps=fps, codec="libx264", quality=8, pixelformat="yuv420p",
-                macro_block_size=1, ffmpeg_params=["-movflags", "+faststart"],
+                str(video_path),
+                fps=fps,
+                codec="libx264",
+                quality=8,
+                pixelformat="yuv420p",
+                macro_block_size=1,
+                ffmpeg_params=["-movflags", "+faststart"],
             ) as writer,
             telemetry_path.open("w", newline="") as csv_file,
             torch.inference_mode(),
@@ -123,8 +145,7 @@ def main():
                 actual_vx = []
                 actual_height = []
                 print(
-                    "CONTINUOUS_CMD_START "
-                    + json.dumps({"case": case_index, "total": len(cases), **case}),
+                    "CONTINUOUS_CMD_START " + json.dumps({"case": case_index, "total": len(cases), **case}),
                     flush=True,
                 )
                 for case_frame in range(frames_per_case):
@@ -157,11 +178,25 @@ def main():
                             zip(
                                 fields,
                                 [
-                                    global_frame, case_index, case["gait"], case["group"],
-                                    (case_frame + 1) * dt, command[0].item(), velocity[0],
-                                    command[1].item(), velocity[1], command[2].item(), yaw_rate, command[3].item(),
-                                    height, command[4].item(), command[9].item(), *wheel_heights, *swing_peaks,
-                                    int(did_reset), total_resets,
+                                    global_frame,
+                                    case_index,
+                                    case["gait"],
+                                    case["group"],
+                                    (case_frame + 1) * dt,
+                                    command[0].item(),
+                                    velocity[0],
+                                    command[1].item(),
+                                    velocity[1],
+                                    command[2].item(),
+                                    yaw_rate,
+                                    command[3].item(),
+                                    height,
+                                    command[4].item(),
+                                    command[9].item(),
+                                    *wheel_heights,
+                                    *swing_peaks,
+                                    int(did_reset),
+                                    total_resets,
                                 ],
                             )
                         )
@@ -176,25 +211,29 @@ def main():
                     draw.text(
                         (20, 10),
                         f"{case_index}/{len(cases)}  {case['gait'].upper()} | {case['group']} | continuous CMD switch",
-                        font=title_font, fill=(255, 255, 255, 255),
+                        font=title_font,
+                        fill=(255, 255, 255, 255),
                     )
                     draw.text(
                         (20, 52),
                         f"CMD vx {command[0]:+.2f} vy {command[1]:+.2f} yaw {command[2]:+.2f} | "
                         f"height {100*command[3]:.0f} cm | freq {command[4]:.1f} Hz | swing {100*command[9]:.1f} cm",
-                        font=body_font, fill=(205, 225, 245, 255),
+                        font=body_font,
+                        fill=(205, 225, 245, 255),
                     )
                     draw.text(
                         (20, 87),
                         f"ACTUAL vx {velocity[0]:+.2f} vy {velocity[1]:+.2f} yaw {yaw_rate:+.2f} | "
                         f"body {100*height:.1f} cm | wheel FR/FL/RR/RL: {format_heights_cm(wheel_heights)} cm",
-                        font=body_font, fill=(255, 255, 255, 255),
+                        font=body_font,
+                        fill=(255, 255, 255, 255),
                     )
                     draw.text(
                         (20, 120),
                         f"Last complete swing peaks FR/FL/RR/RL: {format_heights_cm(swing_peaks)} cm | "
                         f"resets {case_resets}/{total_resets} | {(case_frame + 1) * dt:.1f}/{args.seconds:.1f} s",
-                        font=body_font, fill=(255, 145, 115, 255) if did_reset else (205, 225, 245, 255),
+                        font=body_font,
+                        fill=(255, 145, 115, 255) if did_reset else (205, 225, 245, 255),
                     )
                     writer.append_data(np.asarray(picture))
                     global_frame += 1

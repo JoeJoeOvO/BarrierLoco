@@ -12,17 +12,22 @@ repos:
     rev: v4.5.0
     hooks:
       - id: trailing-whitespace
+        # Preserve archived patches and exact experiment configuration bytes.
+        exclude: ^(artifacts/experiment_snapshots/|(?:docs/experiments/|deploy/policy/).*\.(yaml|json)$)
       - id: check-symlinks
       - id: destroyed-symlinks
       - id: check-added-large-files
         args: ["--maxkb=2000"] # restrict files more than 2 MB. Should use git-lfs instead.
       - id: check-yaml
+        # Isaac Lab emits Python-tagged YAML; validate syntax without loading objects.
+        args: ["--unsafe"]
       - id: check-merge-conflict
       - id: check-case-conflict
       - id: check-executables-have-shebangs
         exclude: ^deploy/src/rl_deploy/library/thirdparty/
       - id: check-toml
       - id: end-of-file-fixer
+        exclude: ^(artifacts/experiment_snapshots/|(?:docs/experiments/|deploy/policy/).*\.(yaml|json)$)
       - id: check-shebang-scripts-are-executable
         exclude: ^deploy/src/rl_deploy/library/thirdparty/
       - id: detect-private-key
