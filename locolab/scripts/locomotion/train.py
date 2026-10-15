@@ -96,10 +96,7 @@ cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 argcomplete.autocomplete(parser)
 args_cli, hydra_args = parser.parse_known_args()
-parkour_task = args_cli.task in (
-    "OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0",
-    "OmniBot-Go2W-Parkour-GoalGrid-MLP-v0",
-)
+parkour_task = args_cli.task in ("OmniBot-Go2W-Parkour-GoalGrid-MLP-v0",)
 if parkour_task:
     try:
         cli_args.validate_scratch_request(args_cli)

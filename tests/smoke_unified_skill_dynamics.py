@@ -45,7 +45,7 @@ try:
 
     # Parkour uses the per-joint TO dynamics, unlike the legacy Jump checkpoint.
     parkour_configs = []
-    for task in ("OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0", "OmniBot-Go2W-Parkour-GoalGrid-MLP-v0"):
+    for task in ("OmniBot-Go2W-Parkour-GoalGrid-MLP-v0",):
         for entry in ("env_cfg_entry_point", "play_env_cfg_entry_point"):
             cfg = load_cfg_from_registry(task, entry)
             legs = cfg.scene.robot.actuators["legs"]

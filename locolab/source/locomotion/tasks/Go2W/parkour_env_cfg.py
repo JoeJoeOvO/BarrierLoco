@@ -1,4 +1,4 @@
-"""Seven measured TOs, seven commands, matched physical terrain, scratch MLP."""
+"""Shared GoalGrid environment components; not a separately registered task."""
 
 import isaaclab.sim as sim_utils
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -10,7 +10,7 @@ from isaaclab.utils import configclass
 
 from locolab.source.locomotion import mdp
 from locolab.source.locomotion.mdp import parkour_jump as pm
-from locolab.source.locomotion.mdp.parkour_reference import BANK_PATH
+from locolab.source.locomotion.mdp.parkour_reference import GOAL_GRID_BANK_PATH
 from locolab.source.locomotion.tasks.velocity_env_cfg import LocomotionEventCfg
 from locolab.source.locomotion.terrains.parkour_bank import ParkourBankTerrainCfg
 
@@ -157,8 +157,8 @@ class Go2WParkourTerminationsCfg(Go2WJumpTerminationsCfg):
 
 
 @configclass
-class Go2WParkourFixedTargetTunedEnvCfg(Go2WFlatEnvCfg):
-    """Retained single-stage recipe: rolling and seven measured TO jumps.
+class Go2WParkourBaseEnvCfg(Go2WFlatEnvCfg):
+    """Shared single-stage recipe: rolling and measured TO jumps.
 
     Actor commands are [vx_yaw, vy_yaw, yaw_rate, jump, height, target_dx, target_dy].
     Height and landing XY are fixed TO-start-frame descriptors, not live error.
@@ -168,9 +168,9 @@ class Go2WParkourFixedTargetTunedEnvCfg(Go2WFlatEnvCfg):
 
     command_semantics_version: int = 3
     critic_command_semantics_version: int = 2
-    training_stage: str = "fixed_target_single_stage_tuned"
+    training_stage: str = "goal_grid_single_stage"
     reward_recipe_version: int = 2
-    reference_bank_path: str = str(BANK_PATH)
+    reference_bank_path: str = str(GOAL_GRID_BANK_PATH)
     scene: Go2WParkourSceneCfg = Go2WParkourSceneCfg(num_envs=4096, env_spacing=32.0)
     commands: Go2WParkourCommandsCfg = Go2WParkourCommandsCfg()
     observations: Go2WParkourObservationsCfg = Go2WParkourObservationsCfg()
@@ -190,18 +190,3 @@ class Go2WParkourFixedTargetTunedEnvCfg(Go2WFlatEnvCfg):
         props.solver_velocity_iteration_count = 4
         # Inherit shared Go2W limits (23.5/23.5/35 Nm, 30/30/20 rad/s),
         # not the historical Jump task's uniform leg caps. Scales stay .25/10.
-
-
-@configclass
-class Go2WParkourFixedTargetTunedPlayEnvCfg(Go2WParkourFixedTargetTunedEnvCfg):
-    def __post_init__(self):
-        super().__post_init__()
-        self.scene.num_envs = 10
-        self.events.reset_base.params["reference_probability"] = 0.0
-        self.observations.policy.enable_corruption = False
-        self.observations.critic.enable_corruption = False
-        self.events.physics_material = None
-        self.events.add_base_mass = None
-        self.events.randomize_joint_friction = None
-        self.events.randomize_actuator_gains = None
-        self.events.base_external_force_torque = None

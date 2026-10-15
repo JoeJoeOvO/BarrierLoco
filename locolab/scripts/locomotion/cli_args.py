@@ -61,11 +61,8 @@ def validate_scratch_request(args_cli: argparse.Namespace) -> None:
     """Reject checkpoint-bearing arguments for the explicit fixed-target scratch mode."""
     if not getattr(args_cli, "from_scratch", False):
         return
-    if args_cli.task not in (
-        "OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0",
-        "OmniBot-Go2W-Parkour-GoalGrid-MLP-v0",
-    ):
-        raise ValueError("--from_scratch is currently supported for Go2W Parkour FixedTarget MLP")
+    if args_cli.task not in ("OmniBot-Go2W-Parkour-GoalGrid-MLP-v0",):
+        raise ValueError("--from_scratch is currently supported for Go2W Parkour GoalGrid MLP")
     for name in ("resume", "warm_start_rough", "checkpoint", "load_run", "resume_experiment_name", "init_checkpoint"):
         if getattr(args_cli, name, None):
             raise ValueError(f"--from_scratch cannot be combined with --{name}")

@@ -28,7 +28,9 @@ cd /home/joey/BarrierLoco
 # 每次启动一个技能的窗口回放，默认载入该技能已训练的最终模型
 ./scripts/skill.sh multiskill play
 ./scripts/skill.sh highplatform play
-./scripts/skill.sh parkour play  # 有权重的 7 动作版本；新 GoalGrid 尚无发布权重
+
+# GoalGrid 从零训练；尚无发布权重
+./scripts/skill.sh omnijump train --headless
 
 # 小规模无窗口训练；技能名可替换
 ./scripts/skill.sh multiskill train --headless --num_envs 64 --max_iterations 100
@@ -41,16 +43,15 @@ cd /home/joey/BarrierLoco
 |---|---|---|
 | 多步态、高度控制（V1课程版） | `OmniBot-Go2W-Gait-Curriculum-Flat-MLP-v0` | `multiskill_scratch80k` |
 | 高台 | `OmniBot-Go2W-HighPlatform-MLP-v0` | `highplatform_rough_mlp_20260922` |
-| 目标跑酷（`omnijump` / `goalparkour`） | `OmniBot-Go2W-Parkour-GoalGrid-MLP-v0` | 尚无发布的 30 动作模型 |
-| 跑酷已训练基线（`parkour`） | `OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0` | `parkour_mlp_20261012` |
+| 目标跑酷（`omnijump` / `goalparkour` / `parkour`） | `OmniBot-Go2W-Parkour-GoalGrid-MLP-v0` | 尚无发布的 30 动作模型 |
 
 `skill.sh` 默认使用 `/home/joey/miniconda3/envs/env_isaaclab/bin/python`，可通过 `BARRIERLOCO_PYTHON` 覆盖。
-Multiskill 默认从零开始，1024 环境、30000 次课程训练；其余技能默认 64 环境。
-训练使用本地 TensorBoard；回放默认 1 环境。Multiskill 的 play/sweep 使用 V1 连续 cmd 演示和右侧面板。
+Multiskill 默认从零开始，1024 环境、30000 次课程训练；HighPlatform 默认 64 环境。
+训练使用本地 TensorBoard；HighPlatform 回放默认 1 环境，GoalGrid 默认 40 环境。Multiskill 的 play/sweep 使用 V1 连续 cmd 演示和右侧面板。
 课程代码、最终80k模型和录屏程序均在当前仓库；旧V1/作者权重及中间结果已清理。
 详细命令见 [V1整合说明](docs/multiskill_v1.md)。
-GoalGrid/parkour 默认从零、4096 环境、5000 次单阶段训练；详见 [新 Jump 整合说明](docs/goalparkour_integration.md)。
-`omnijump play` 必须显式提供 GoalGrid checkpoint，不会自动误用 7 动作或旧 Jump 权重。
+GoalGrid 默认从零、4096 环境、5000 次单阶段训练；详见 [新 Jump 整合说明](docs/goalparkour_integration.md)。
+`omnijump play` 必须显式提供 GoalGrid checkpoint，独立七轨迹版本及其模型已删除，30 条 GoalGrid 参考保持不变。
 
 ## 代码结构
 

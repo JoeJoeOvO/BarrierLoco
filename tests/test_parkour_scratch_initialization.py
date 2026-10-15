@@ -15,7 +15,7 @@ SPEC.loader.exec_module(CLI)
 
 def args(**changes):
     values = dict(
-        task="OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0",
+        task="OmniBot-Go2W-Parkour-GoalGrid-MLP-v0",
         from_scratch=True,
         resume=False,
         warm_start_rough=None,

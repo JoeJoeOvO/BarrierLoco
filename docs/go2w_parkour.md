@@ -1,3 +1,5 @@
+> 历史上游说明：本文描述七轨迹基线。当前仓库已删除独立七轨迹任务和模型，仅保留其参考数据供 30 条 GoalGrid 使用。当前入口见 [整合说明](goalparkour_integration.md)。
+
 # Go2W Parkour：保留的单阶段跳跃技能
 
 最终任务：`OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0`。保留其原名称用于已有checkpoint；

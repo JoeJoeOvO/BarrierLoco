@@ -32,17 +32,11 @@ case "$skill" in
         bundle=deploy/policy/go2w/multiskill_scratch80k
         model=model_79999.pt
         ;;
-    omnijump|goalparkour)
+    omnijump|goalparkour|parkour)
         # New jump slot: the 30-motion GoalGrid has no published final policy yet.
         task=OmniBot-Go2W-Parkour-GoalGrid-MLP-v0
         bundle=""
         model=""
-        ;;
-    parkour)
-        # Explicitly select the retained seven-motion policy; never pass it off as GoalGrid.
-        task=OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0
-        bundle=deploy/policy/go2w/parkour_mlp_20261012
-        model=model_4999.pt
         ;;
     *) echo "Unknown skill: $skill" >&2; exit 2 ;;
 esac
@@ -80,7 +74,7 @@ case "$operation" in
         ;;
     play)
         if [[ -z "$bundle" ]] && ! has_option --checkpoint "$@"; then
-            echo "GoalGrid has no published trained checkpoint. Supply --checkpoint for your GoalGrid model, or use 'parkour play' for the retained seven-motion policy." >&2
+            echo "GoalGrid has no published trained checkpoint. Supply --checkpoint for your GoalGrid model." >&2
             exit 2
         fi
         checkpoint_args=()
@@ -91,7 +85,6 @@ case "$operation" in
         env_args=()
         if ! has_option --num_envs "$@"; then
             if [[ "$task" == *GoalGrid* ]]; then env_args=(--num_envs 40)
-            elif [[ "$task" == *Parkour-* ]]; then env_args=(--num_envs 10)
             else env_args=(--num_envs 1); fi
         fi
         exec "$python_bin" locolab/scripts/locomotion/play.py --task "$task" \

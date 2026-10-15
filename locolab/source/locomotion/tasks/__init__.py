@@ -69,19 +69,6 @@ gym.register(
 )
 
 gym.register(
-    id="OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": f"{__name__}.Go2W.parkour_env_cfg:Go2WParkourFixedTargetTunedEnvCfg",
-        "play_env_cfg_entry_point": f"{__name__}.Go2W.parkour_env_cfg:Go2WParkourFixedTargetTunedPlayEnvCfg",
-        "rsl_rl_cfg_entry_point": (
-            "locolab.source.locomotion.tasks.agents.rsl_rl_ppo_cfg:Go2WParkourFixedTargetTunedMLPPPORunnerCfg"
-        ),
-    },
-)
-
-gym.register(
     id="OmniBot-Go2W-Parkour-GoalGrid-MLP-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

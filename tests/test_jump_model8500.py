@@ -108,10 +108,7 @@ def test_legacy_jump_registration_is_replaced_by_parkour():
                 registry[kwargs["id"].value] = ast.unparse(kwargs["kwargs"])
     assert not [name for name in registry if "Jump" in name]
     assert "parkour_goal_grid_env_cfg:Go2WParkourGoalGridEnvCfg" in registry["OmniBot-Go2W-Parkour-GoalGrid-MLP-v0"]
-    assert (
-        "parkour_env_cfg:Go2WParkourFixedTargetTunedPlayEnvCfg"
-        in registry["OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0"]
-    )
+    assert "OmniBot-Go2W-Parkour-FixedTargetTuned-MLP-v0" not in registry
 
 
 def test_reference_and_historical_limits_are_preserved():

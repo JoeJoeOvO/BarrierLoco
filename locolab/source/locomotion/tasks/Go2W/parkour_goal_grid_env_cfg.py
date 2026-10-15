@@ -4,11 +4,11 @@ from isaaclab.utils import configclass
 
 from locolab.source.locomotion.mdp.parkour_reference import GOAL_GRID_BANK_PATH
 
-from .parkour_env_cfg import Go2WParkourFixedTargetTunedEnvCfg
+from .parkour_env_cfg import Go2WParkourBaseEnvCfg
 
 
 @configclass
-class Go2WParkourGoalGridEnvCfg(Go2WParkourFixedTargetTunedEnvCfg):
+class Go2WParkourGoalGridEnvCfg(Go2WParkourBaseEnvCfg):
     training_stage: str = "goal_grid_single_stage"
     reference_bank_path: str = str(GOAL_GRID_BANK_PATH)
     required_reference_bank_version: int = 2

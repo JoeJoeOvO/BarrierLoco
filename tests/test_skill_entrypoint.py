@@ -57,7 +57,7 @@ def test_other_skills_do_not_load_gait_weights(skill):
     assert "gait" not in args[args.index("--checkpoint") + 1]
 
 
-@pytest.mark.parametrize("skill", ["omnijump", "goalparkour"])
+@pytest.mark.parametrize("skill", ["omnijump", "goalparkour", "parkour"])
 def test_jump_slot_uses_goalgrid_scratch_without_legacy_weights(skill):
     args = dispatch(skill, "train")
     assert args[args.index("--task") + 1] == "OmniBot-Go2W-Parkour-GoalGrid-MLP-v0"
@@ -69,9 +69,6 @@ def test_jump_slot_uses_goalgrid_scratch_without_legacy_weights(skill):
     assert args.count("--num_envs") == 1 and "--jump_stage" not in args
 
 
-def test_retained_parkour_policy_is_explicit_and_resume_remains_explicit():
-    args = dispatch("parkour", "play")
-    assert "FixedTargetTuned" in args[args.index("--task") + 1]
-    assert "parkour_mlp_20261012" in args[args.index("--checkpoint") + 1]
+def test_goalgrid_resume_remains_explicit():
     args = dispatch("goalparkour", "train", "--resume", "--checkpoint", "/tmp/goalgrid.pt")
     assert "--from-scratch" not in args
