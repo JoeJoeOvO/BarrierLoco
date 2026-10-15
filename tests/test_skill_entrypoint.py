@@ -64,7 +64,7 @@ def test_jump_slot_uses_goalgrid_scratch_without_legacy_weights(skill):
     assert "--from-scratch" in args and "--jump_stage" not in args
     assert args[args.index("--num_envs") + 1] == "4096"
     result = subprocess.run(["bash", str(ROOT / "scripts/skill.sh"), skill, "play"], capture_output=True, text=True)
-    assert result.returncode == 2 and "no published trained checkpoint" in result.stderr
+    assert result.returncode == 2 and "requires an explicit --checkpoint" in result.stderr
     args = dispatch(skill, "play", "--checkpoint", "/tmp/goalgrid.pt", "--num_envs", "2")
     assert args.count("--num_envs") == 1 and "--jump_stage" not in args
 

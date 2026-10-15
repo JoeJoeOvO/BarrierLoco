@@ -1,0 +1,8 @@
+{
+  "samples": 257,
+  "seed": 42,
+  "torchscript_max_abs_error": 0,
+  "onnx_max_abs_error": 1.1444091796875e-05,
+  "tolerance": 0.0002,
+  "scope": "numerical export equivalence, not locomotion performance"
+}

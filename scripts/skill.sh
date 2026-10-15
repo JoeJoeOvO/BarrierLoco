@@ -33,7 +33,7 @@ case "$skill" in
         model=model_79999.pt
         ;;
     omnijump|goalparkour|parkour)
-        # New jump slot: the 30-motion GoalGrid has no published final policy yet.
+        # GoalGrid checkpoints must be selected explicitly; the 5k bundle awaits per-goal validation.
         task=OmniBot-Go2W-Parkour-GoalGrid-MLP-v0
         bundle=""
         model=""
@@ -74,7 +74,7 @@ case "$operation" in
         ;;
     play)
         if [[ -z "$bundle" ]] && ! has_option --checkpoint "$@"; then
-            echo "GoalGrid has no published trained checkpoint. Supply --checkpoint for your GoalGrid model." >&2
+            echo "GoalGrid requires an explicit --checkpoint. The goalgrid_scratch5k bundle is pending per-goal validation." >&2
             exit 2
         fi
         checkpoint_args=()

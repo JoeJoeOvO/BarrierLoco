@@ -4,11 +4,7 @@
 
 ## 仓库交付
 
-已完成的代码、两阶段 checkpoint、TorchScript/ONNX actor 和参数校验记录位于
-[最终网络包](../deploy/policy/go2w/jump_smooth_mlp_20261009/README.md)；
-固定速度回放与探索噪声测试见 [评估报告](../artifacts/go2w_jump/20261009_final_9998/README.md)。
-网络文件使用目录级 Git LFS。下文主工作区中的完整归档属于本机/服务器留档，
-不要求克隆者拥有这些历史绝对路径，也不把旧实验缓存纳入版本库。
+旧两阶段权重及测试报告已从当前工作树移除。下文仅保留历史方法说明，当前 Jump 请使用 [GoalGrid](goalparkour_integration.md)。
 
 在已有训练环境、`locolab/` 目录可用正式入口重现两阶段：
 

@@ -7,7 +7,7 @@
 ## 替换范围与模型状态
 
 - `omnijump`、`goalparkour` 与 `parkour` 均进入 `OmniBot-Go2W-Parkour-GoalGrid-MLP-v0`，替代原来的两阶段 Jump 工作流。
-- 新 GoalGrid 包含 30 条参考动作：原 7 条，加 23 条独立验收的平地目标动作。上游此提交没有发布它训练完成的模型。
+- 新 GoalGrid 包含 30 条参考动作：原 7 条，加 23 条独立验收的平地目标动作。上游此提交没有发布它训练完成的模型。本地现已完成 5000 次从零训练，模型与配置保存在 `deploy/policy/go2w/goalgrid_scratch5k/`，尚未完成逐目标验收。
 - 独立七轨迹任务、专用评估脚本和 `parkour_mlp_20261012` 模型包已删除。`parkour` 仅作为 GoalGrid 的兼容别名，不再选择旧模型。
 - 保留原始 30 条参考及其采样比例，不修改轨迹、动力学或奖励。七条基础参考库仍是 GoalGrid 的来源完整性校验依赖，不是另一个训练任务。
 - 旧 54 维 Jump 权重已归档到 `/home/joey/barrierloco_sources/barrierloco-legacy-jump-20261014`。旧 Jump task 已取消注册；Parkour 复用的底层指令/终止/奖励工具仍保留，不再提供旧 Jump task 训练入口。
@@ -50,4 +50,6 @@ scripts/skill.sh goalparkour play --checkpoint /absolute/path/to/goalgrid_model.
 
 下载/打包必须包含 Git LFS 实体文件；两个 `.json.gz` 参考库也是运行依赖，已纳入 Python 包数据。
 共享训练入口兼容上游 `--from_scratch` 和本地 `--from-scratch`，保留 Parkour 的明确初始化约束与初始化哈希记录；回放曲线读取 Parkour 的 `parkour` 指令项。
-本次只部署整合和短程验证，没有启动正式 5000 次训练，也没有适配 C++/实机部署。原始接口/算法说明见 [历史参考来源说明](go2w_parkour.md) 和 [GoalGrid 上游说明](go2w_parkour_goal_grid.md)。
+初次整合只进行了短程验证；后续已完成本地 5000 次训练及交互回放，未完成逐目标验收，也没有适配 C++/实机部署。原始接口/算法说明见 [历史参考来源说明](go2w_parkour.md) 和 [GoalGrid 上游说明](go2w_parkour_goal_grid.md)。
+
+本地模型及离散/连续目标检查命令见 [GoalGrid 模型包](../deploy/policy/go2w/goalgrid_scratch5k/README.md)。过程 checkpoint、回放日志、CSV 和临时测试产物已清理；训练主日志、TensorBoard、最终权重与参数仍在本地保留。

@@ -71,6 +71,9 @@ parser.add_argument(
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
 parser.add_argument("--follow-camera", action="store_true", help="Track robot zero in the interactive viewport.")
 parser.add_argument("--velocity-sweep", action="store_true", help="Cycle Go2W gait / omnidirectional velocity cases.")
+parser.add_argument("--parkour-generalization", action="store_true", help="Probe continuous H/XY goals on flat ground.")
+parser.add_argument("--parkour-sweep", action="store_true", help="Inspect all GoalGrid motions at four trained speeds.")
+parser.add_argument("--parkour-sweep-seconds", type=float, default=12.0, help="Seconds per GoalGrid inspection case.")
 parser.add_argument("--live-plot", action="store_true", help="Dock live velocity curves and values inside Isaac Sim.")
 parser.add_argument("--sweep-seconds", type=float, default=6.0, help="Simulation seconds per velocity case.")
 parser.add_argument(
@@ -92,6 +95,14 @@ if args_cli.sweep_seconds <= 0 or not math.isfinite(args_cli.sweep_seconds):
     parser.error("--sweep-seconds must be positive and finite")
 if not math.isfinite(args_cli.sweep_max_vx) or args_cli.sweep_max_vx <= 0:
     parser.error("--sweep-max-vx must be positive and finite")
+if (
+    args_cli.parkour_sweep or args_cli.parkour_generalization
+) and args_cli.task != "OmniBot-Go2W-Parkour-GoalGrid-MLP-v0":
+    parser.error("--parkour-sweep requires GoalGrid")
+if args_cli.parkour_sweep and args_cli.parkour_generalization:
+    parser.error("Choose reference sweep or generalization, not both")
+if not math.isfinite(args_cli.parkour_sweep_seconds) or args_cli.parkour_sweep_seconds < 10:
+    parser.error("--parkour-sweep-seconds must be finite and at least 10 s (one episode)")
 if args_cli.live_plot and args_cli.headless:
     parser.error("--live-plot requires a desktop window")
 if args_cli.jump_stage and args_cli.task != "OmniBot-Go2W-Jump-MLP-v0":
@@ -160,6 +171,21 @@ def main():
         env_cfg.scene.num_envs = 1
         env_cfg.commands.base_velocity.heading_command = False
         env_cfg.commands.base_velocity.lin_vel_x = (-args_cli.sweep_max_vx, args_cli.sweep_max_vx)
+    if args_cli.parkour_sweep:
+        # Retain each reference's physical tile; the camera changes robots instead
+        # of assigning a gap/ramp reference to an incompatible flat environment.
+        env_cfg.scene.num_envs = 100
+        env_cfg.events.reset_base.params["resample_flat_motion"] = False
+    if args_cli.parkour_generalization:
+        # Off-grid actor tests have no matching teacher trajectory. Keep physical
+        # failure checks, but do not grade/reset against the old reference goal.
+        env_cfg.scene.num_envs = 1
+        env_cfg.episode_length_s = 10.0
+        env_cfg.events.reset_base.params["resample_flat_motion"] = False
+        env_cfg.terminations.task_succeeded = None
+        env_cfg.terminations.task_failed = None
+        env_cfg.rewards.termination_penalty = None
+        env_cfg.rewards.task_success_bonus = None
     if args_cli.follow_camera:
         configure_robot_follow_view(env_cfg.viewer)
     if args_cli.jump_stage:
@@ -278,7 +304,10 @@ def main():
         writer = csv.writer(telemetry)
         writer.writerow(["time", "case", "cmd0", "cmd1", "cmd2", "actual0", "actual1", "actual2", "resets"])
         telemetry.flush()
-        velocity_panel = VelocityPanel()
+        quantities = (
+            (("rise H", "m"), ("landing X", "m"), ("landing Y", "m")) if args_cli.parkour_generalization else None
+        )
+        velocity_panel = VelocityPanel(quantities=quantities)
         print(f"[INFO] Live velocity telemetry: {telemetry_path}", flush=True)
     if args_cli.velocity_sweep:
         from locolab.source.locomotion.mdp.wtw_math import PHASE_PRESETS
@@ -287,6 +316,20 @@ def main():
         # Keep narrow-range checkpoints inside their trained vx range during inspection.
         cases = [case for case in velocity_cases() if abs(case[2][0]) <= args_cli.sweep_max_vx]
     command_name = "parkour" if "Parkour-" in args_cli.task else "base_velocity"
+    inspect_index = 0
+    if args_cli.parkour_sweep:
+        from locolab.source.locomotion.utils.parkour_sweep import inspection_cases
+
+        native = env.unwrapped
+        parkour_term = native.command_manager.get_term("parkour")
+        sweep_cases = inspection_cases(parkour_term.motion_ids.tolist(), parkour_term.locomotion_only.tolist())
+        if {case[0] for case in sweep_cases} != set(range(len(parkour_term.bank.names))):
+            raise ValueError("Inspection layout does not cover the complete reference bank")
+    inspector = None
+    if args_cli.parkour_generalization:
+        from locolab.source.locomotion.utils.parkour_generalization import GoalGridInspector
+
+        inspector = GoalGridInspector(env.unwrapped)
     previous_case = -1
     reset_count = 0
     # simulate environment
@@ -314,19 +357,75 @@ def main():
                     gait_command(gait, velocity, PHASE_PRESETS)
                 )
                 obs = env.get_observations()
-            cmd = env.unwrapped.command_manager.get_command(command_name)[0, :3].clone()
+            if args_cli.parkour_sweep:
+                case_number = int(timestep * dt / args_cli.parkour_sweep_seconds)
+                motion_id, speed, inspect_index = sweep_cases[case_number % len(sweep_cases)]
+                if case_number != previous_case:
+                    env.reset()
+                    controller = native.viewport_camera_controller
+                    if controller is not None:
+                        controller.set_view_env_index(inspect_index)
+                    case_changed = True
+                    previous_case = case_number
+                    print(
+                        f"[PARKOUR_SWEEP] case={case_number % len(sweep_cases) + 1}/{len(sweep_cases)} "
+                        f"motion={parkour_term.bank.names[motion_id]} speed={speed} env={inspect_index}",
+                        flush=True,
+                    )
+                # Auto-reset resamples speeds: reapply before every inference and
+                # recompute observations so the policy receives the displayed cmd.
+                parkour_term.forward_speed[:] = speed
+                obs = env.get_observations()
+                label = (
+                    f"{case_number % len(sweep_cases) + 1}/{len(sweep_cases)} "
+                    f"{parkour_term.bank.names[motion_id]} | {speed:.1f} m/s"
+                )
+                if velocity_panel is not None:
+                    full_cmd = parkour_term.command[inspect_index]
+                    robot = native.scene["robot"]
+                    local = robot.data.root_pos_w[inspect_index] - native.scene.env_origins[inspect_index]
+                    rise = local[2] - parkour_term.bank.states["position"][motion_id, 0, 2]
+                    stage = (
+                        "exit"
+                        if parkour_term.rolling_exit[inspect_index]
+                        else "jump" if parkour_term.active[inspect_index] else "approach"
+                    )
+                    error = parkour_term.touchdown_error[inspect_index].item()
+                    landing_text = f"{error:.3f} m" if math.isfinite(error) else "pending"
+                    velocity_panel.details.text = (
+                        f"Stage: {stage} | jump={full_cmd[3].item():.0f}\n"
+                        f"Target H / X / Y: {full_cmd[4].item():.3f} / {full_cmd[5].item():.3f} / "
+                        f"{full_cmd[6].item():.3f} m\n"
+                        f"Actual rise / X / Y: {rise.item():.3f} / {local[0].item():.3f} / {local[1].item():.3f} m\n"
+                        f"First landing XY error: {landing_text}"
+                    )
+            if inspector is not None:
+                inspector.term.forward_speed[:] = inspector.speed
+                obs = inspector.actor_observation(env.get_observations())
+                plot_cmd, plot_actual, details = inspector.measure()
+                label = f"Attempt {inspector.index + 1} | {inspector.group} | off-grid goals"
+                if velocity_panel is not None:
+                    velocity_panel.details.text = details
+            cmd = env.unwrapped.command_manager.get_command(command_name)[inspect_index, :3].clone()
             # agent stepping
             actions = policy(obs)
             # env stepping
             obs, _, dones, _ = env.step(actions)
             if telemetry is not None:
-                reset = bool(dones[0].item())
+                reset = bool(dones[inspect_index].item())
                 reset_count += int(reset)
                 robot = env.unwrapped.scene["robot"]
-                actual = torch.cat((robot.data.root_lin_vel_b[0, :2], robot.data.root_ang_vel_b[0, 2:3]))
+                actual = torch.cat(
+                    (robot.data.root_lin_vel_b[inspect_index, :2], robot.data.root_ang_vel_b[inspect_index, 2:3])
+                )
                 # Log the command used for this action, with post-step body-frame velocity.
                 # A terminal step has already auto-reset in the vector wrapper, so omit
                 # that measurement from CSV instead of presenting it as tracking success.
+                if inspector is not None:
+                    # Measurements are pre-step, before vector-env auto-reset can
+                    # erase the landing. Targets are peak/endpoint, not trajectories.
+                    cmd = cmd.new_tensor(plot_cmd)
+                    actual = actual.new_tensor(plot_actual)
                 values = [float("nan")] * 3 if reset or case_changed else actual.tolist()
                 writer.writerow([timestep * dt, label, *cmd.tolist(), *values, reset_count])
                 velocity_panel.update(
@@ -337,6 +436,9 @@ def main():
                     reset_count,
                     clear=reset or case_changed,
                 )
+            if inspector is not None and bool(dones[0]):
+                inspector.finish()
+                inspector.next_attempt()
         timestep += 1
         if video_plan is not None:
             # Exit the play loop after recording one video

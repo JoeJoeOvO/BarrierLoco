@@ -29,7 +29,7 @@ cd /home/joey/BarrierLoco
 ./scripts/skill.sh multiskill play
 ./scripts/skill.sh highplatform play
 
-# GoalGrid 从零训练；尚无发布权重
+# GoalGrid 从零训练
 ./scripts/skill.sh omnijump train --headless
 
 # 小规模无窗口训练；技能名可替换
@@ -43,7 +43,7 @@ cd /home/joey/BarrierLoco
 |---|---|---|
 | 多步态、高度控制（V1课程版） | `OmniBot-Go2W-Gait-Curriculum-Flat-MLP-v0` | `multiskill_scratch80k` |
 | 高台 | `OmniBot-Go2W-HighPlatform-MLP-v0` | `highplatform_rough_mlp_20260922` |
-| 目标跑酷（`omnijump` / `goalparkour` / `parkour`） | `OmniBot-Go2W-Parkour-GoalGrid-MLP-v0` | 尚无发布的 30 动作模型 |
+| 目标跑酷（`omnijump` / `goalparkour` / `parkour`） | `OmniBot-Go2W-Parkour-GoalGrid-MLP-v0` | `goalgrid_scratch5k`（待逐目标验收） |
 
 `skill.sh` 默认使用 `/home/joey/miniconda3/envs/env_isaaclab/bin/python`，可通过 `BARRIERLOCO_PYTHON` 覆盖。
 Multiskill 默认从零开始，1024 环境、30000 次课程训练；HighPlatform 默认 64 环境。
@@ -51,7 +51,7 @@ Multiskill 默认从零开始，1024 环境、30000 次课程训练；HighPlatfo
 课程代码、最终80k模型和录屏程序均在当前仓库；旧V1/作者权重及中间结果已清理。
 详细命令见 [V1整合说明](docs/multiskill_v1.md)。
 GoalGrid 默认从零、4096 环境、5000 次单阶段训练；详见 [新 Jump 整合说明](docs/goalparkour_integration.md)。
-`omnijump play` 必须显式提供 GoalGrid checkpoint，独立七轨迹版本及其模型已删除，30 条 GoalGrid 参考保持不变。
+`omnijump play` 必须显式提供 GoalGrid checkpoint；目前已保留 [5000 次从零训练模型与回放命令](deploy/policy/go2w/goalgrid_scratch5k/README.md)，尚未完成逐目标验收。独立七轨迹版本及其模型已删除，30 条 GoalGrid 参考保持不变。
 
 ## 代码结构
 
@@ -59,7 +59,7 @@ GoalGrid 默认从零、4096 环境、5000 次单阶段训练；详见 [新 Jump
 - `locolab/source/locomotion/tasks/Go2W/`：各技能环境、指令和奖励配置。
 - `locolab/source/locomotion/mdp/`：奖励、观测、课程和指令实现。
 - `locolab/rsl_rl/`：共享 PPO、网络及训练运行器。
-- `deploy/policy/go2w/`：已发布的完整 checkpoint、ONNX/TorchScript 网络与来源参数（GoalGrid 无发布模型）。
+- `deploy/policy/go2w/`：已发布的完整 checkpoint、ONNX/TorchScript 网络与来源参数（GoalGrid 模型尚待逐目标验收）。
 - `tests/`：回归测试与仿真检查。
 
 ## 配置约定

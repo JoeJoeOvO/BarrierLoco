@@ -16,10 +16,11 @@ GRID = 0xFF42382C
 
 
 class VelocityPanel:
-    def __init__(self, window=None, frame=None):
+    def __init__(self, window=None, frame=None, quantities=None):
         # Embed in the V1 command inspector, or retain the standalone play panel.
         self.owns_window = window is None
-        self.window = window or ui.Window("Velocity Tracking", width=430, height=440)
+        title = "Jump Target Tracking" if quantities else "Velocity Tracking"
+        self.window = window or ui.Window(title, width=470, height=600)
         self.history = [[deque(maxlen=250), deque(maxlen=250)] for _ in range(3)]
         self.plots = []
         self.values = []
@@ -30,13 +31,14 @@ class VelocityPanel:
             ui.ScrollingFrame(horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF),
             ui.VStack(spacing=3, height=0),
         ):
-            ui.Label("VELOCITY TRACKING", height=20, style={"color": TEXT, "font_size": 16})
-            self.case = ui.Label("Waiting for simulation", height=22, style={"color": MUTED})
+            ui.Label(title.upper(), height=20, style={"color": TEXT, "font_size": 16})
+            self.case = ui.Label("Waiting for simulation", height=36, word_wrap=True, style={"color": MUTED})
+            self.details = ui.Label("", height=0, word_wrap=True, style={"color": TEXT})
             with ui.HStack(height=18):
                 ui.Label("  CMD", style={"color": CMD})
                 ui.Label("  ACTUAL", style={"color": ACTUAL})
-                ui.Label("Body frame | 25 s", style={"color": MUTED})
-            for name, unit in (("vx", "m/s"), ("vy", "m/s"), ("wz", "rad/s")):
+                ui.Label("Target frame | 25 s" if quantities else "Body frame | 25 s", style={"color": MUTED})
+            for name, unit in quantities or (("vx", "m/s"), ("vy", "m/s"), ("wz", "rad/s")):
                 with ui.HStack(height=21, spacing=4):
                     ui.Label(f"{name}  {unit}", width=80, style={"color": TEXT, "font_size": 14})
                     command = ui.Label("+0.000", style={"color": CMD, "font_size": 14})

@@ -1,0 +1,21 @@
+{
+  "status": "training_complete_pending_per_goal_validation",
+  "task": "OmniBot-Go2W-Parkour-GoalGrid-MLP-v0",
+  "training_commit": "5f2e20f9d12c743152490e70467bbc9da5c837ea",
+  "source_run": "/home/joey/BarrierLoco/locolab/logs/rsl_rl/omnibot_go2w_parkour_goal_grid_mlp_v0/2026-10-15_13-32-45_goalgrid_scratch_env4096_5k",
+  "from_scratch": true,
+  "seed": 42,
+  "num_envs": 4096,
+  "num_steps_per_env": 24,
+  "updates": 5000,
+  "checkpoint_iteration": 4999,
+  "reference_motions": 30,
+  "files_sha256": {
+    "policy.pt": "9bbaafd7b161938dd9b1b07648343cfe9036a11cca9f8bdf1f05f72ecff61573",
+    "model_4999.pt": "cffe70b78e9fbe1fda5e942d5f22b71008cca1faeb25d1c464b5b3f0a0805217",
+    "policy.onnx": "f7265e4b104f8ffe6c5bbdc58b5f081840f68d0fc6736adc0ac0d467835a9a0c",
+    "params/env.yaml": "34b0f2462e3b92b339c121929f4974c0ae4496ae0dc7c077053f35eaec51724f",
+    "params/agent.yaml": "e4163e707c3e06d31ce0c1eb30dcb6ac55a3f6b80b19a1d01a2b479d6a98afec",
+    "params/initialization.yaml": "308596ee23303849c55b7182e197cba9f32e3c3b2c2e6dc9cefecc5ce88ba3a9"
+  }
+}
