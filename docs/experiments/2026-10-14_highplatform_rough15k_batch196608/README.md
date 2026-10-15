@@ -25,6 +25,24 @@ Rough/HighPlatform 核心奖励、地形课程、PPO 与上游保持一致；共
 - 环境版本：{"python": "3.10.20", "torch": "2.7.0+cu128", "isaaclab": "0.54.3", "isaacsim": "4.5.0.0"}。使用 /home/joey/miniconda3/envs/env_isaaclab/bin/python。
 两阶段实际配置和初始化记录均保存在本目录 rough/、highplatform/；权重路径及 SHA256 见 manifest.json。
 
+## 关键复现条件：num_envs 与每次更新的采样量
+
+**HighPlatform 的 `num_envs` 不能只当作显存或运行速度选项。复现本次成功结果，应保持 `num_envs=4096`、`num_steps_per_env=48`、`num_mini_batches=4`；不能直接降为 1024 环境而仍沿用 24 步，并期待相同的训练行为。**
+
+这里的 rollout batch 指每次 PPO 更新前收集的状态转移数：`num_envs × num_steps_per_env`。在 4 个 minibatch 下，对比如下：
+
+| 高台阶段配置 | 并行环境数 | 每环境采样步数 | 每次更新样本数 | 每个 minibatch 样本数 |
+|---|---:|---:|---:|---:|
+| 作者原配置 | 8192 | 24 | 196608 | 49152 |
+| 本地此前退化配置 | 1024 | 24 | 24576 | 6144 |
+| 本次成功配置 | 4096 | 48 | 196608 | 49152 |
+
+此前本地 batch 只有作者的 **1/8**。从同一个本地 Rough 15k 父模型出发，1024×24 的高台训练出现课程退化，后期 `model_20000.pt` 固定高台评测为 0/256；本次 4096×48 的早期和最终三个 checkpoint 均为 256/256。单纯延长小 batch 训练并没有解决此前观察到的退化。失败对照的本地审计依据见 `artifacts/go2w_highplatform/audit_20261013/audit_summary.json`（诊断数据未随仓库发布）。
+
+影响不只在总 batch：更多并行环境可在同一轮更新中提供更多独立的重置、随机化、指令和地形课程状态；增加每环境步数则延长连续轨迹，改变时间相关性与回报估计的截断位置。因此，**4096×48 与 8192×24 只匹配采样总数，不是完全等价的训练配置**。本次结果支持“扩大并行环境数和每次更新采样量这一组合缓解了退化”，尚不能证明 `num_envs` 单独是根因，也未验证任意等 batch 配置都有效。
+
+若以后只能使用 1024 环境，192 步可在算术上匹配 196608 条样本，但这仍是待验证的新实验，不能视作本次已成功配置。比较不同配置时应同时记录环境数、采样步数、batch、minibatch 和总交互样本数；相同 5000 次更新下，4096×48 的交互样本数为 983040000，是 1024×24 的 8 倍。本条经验针对高台阶段；本次 Rough 父策略仍由 1024×24 训练得到。
+
 ## 复现命令
 工作目录 /home/joey/BarrierLoco，使用新的实验名称，避免覆盖已有日志。
 
@@ -45,7 +63,7 @@ scripts/skill.sh highplatform python locolab/scripts/locomotion/evaluate_highpla
 供克隆后使用的权重已打包至 `deploy/policy/go2w/highplatform_rough15k_batch196608/`，含父模型和最终模型（Git LFS）；下列绝对路径保留原训练来源。
 最终模型：/home/joey/BarrierLoco/locolab/logs/rsl_rl/barrierloco_highplatform_20261013-225424-env4096-batch196608/2026-10-13_22-54-31_highplatform_4096_steps48_5k/model_19998.pt
 训练及评测日志：/home/joey/BarrierLoco/logs/setup/highplatform_pipeline/20261013-225424-env4096-batch196608
-父模型、最终模型、源码快照和日志通常不随 Git 备份，需单独保留。
+父模型和最终模型已随 Git LFS 发布；原训练源码快照和完整日志仍需单独备份。
 
 | checkpoint | 50 cm | 60 cm | 70 cm | 80 cm | 总通过 |
 |---|---:|---:|---:|---:|---:|
