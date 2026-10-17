@@ -317,3 +317,14 @@ gym.register(
         ),
     },
 )
+
+# Scene task; navigation uses the dedicated train_planner.py runner rather than RSL entry points.
+gym.register(
+    id="BarrierLoco-Go2W-PlannerTerrain-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.Go2W.planner_terrain_env_cfg:Go2WPlannerTerrainEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.Go2W.planner_terrain_env_cfg:Go2WPlannerTerrainPlayEnvCfg",
+    },
+)

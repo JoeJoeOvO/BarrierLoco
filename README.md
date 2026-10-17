@@ -1,6 +1,6 @@
 # BarrierLoco
 
-基于 Isaac Lab 的 Go2W 三技能统一仓库：多步态、高台、跳跃。
+基于 Isaac Lab 的 Go2W 技能库与导航 Planner：多步态、高台、GoalGrid 跳跃，以及基于 OCC 的多技能调度。
 全部任务共用 `locolab/` 的训练与回放框架，通过 task 或技能名选择，各自保留训练配置和模型权重。
 
 ## 获取模型与环境
@@ -53,12 +53,59 @@ Multiskill 默认从零开始，1024 环境、30000 次课程训练；HighPlatfo
 GoalGrid 默认从零、4096 环境、5000 次单阶段训练；详见 [新 Jump 整合说明](docs/goalparkour_integration.md)。
 `omnijump play` 必须显式提供 GoalGrid checkpoint；目前已保留 [5000 次从零训练模型与回放命令](deploy/policy/go2w/goalgrid_scratch5k/README.md)，尚未完成逐目标验收。独立七轨迹版本及其模型已删除，30 条 GoalGrid 参考保持不变。
 
+## 导航 Planner（开发与验证中）
+
+Planner 输入本体状态（58 维）、局部双通道 OCC（占用与已观测区域）和相对目标位置；共享网络输出技能选择与各技能 cmd，调用冻结的三个底层策略。使用独立的混合动作 PPO 训练入口，每秒决策 10 次，底层控制 50 Hz。详见 [导航接口与训练说明](docs/planner_navigation.md) 和 [地形说明](docs/planner_terrain.md)。
+
+支持 10 类混合地形（包含 Isaac Lab Rough 的 6 类）以及 5 类纯 Gap 地形：单沟、双沟、斜沟、折线沟、变宽沟。连续导航目标距离为 8–16 m，带方向变化并允许跨地块；目标位于实际地形表面。新版到达条件为水平距离小于 1.2 m、水平速度低于 1.0 m/s，并检查机身与目标面的高度关系，无需完全静止。
+
+```bash
+# 混合地形，从零训练 Planner；底层技能保持冻结
+./scripts/skill.sh omnijump python locolab/scripts/locomotion/train_planner.py \
+  --headless --continuous-mixed --jump-always-active \
+  --num-envs 160 --horizon 32 --max-iterations 20000 --episode-seconds 180 \
+  --progress-reward 3 --arrival-reward 20 --step-cost 0.02 \
+  --output logs/planner/mixed_new_run
+
+# 五类纯 Gap：沿用连续导航设置，用 --diverse-gaps 替换地形
+./scripts/skill.sh omnijump python locolab/scripts/locomotion/train_planner.py \
+  --headless --continuous-mixed --diverse-gaps --jump-always-active \
+  --num-envs 160 --horizon 32 --max-iterations 20000 --episode-seconds 180 \
+  --progress-reward 3 --arrival-reward 20 --step-cost 0.02 \
+  --output logs/planner/diverse_gaps_new_run
+
+# 回放自动读取 checkpoint 的地形和指令配置；相机跟随，右侧停靠曲线
+./scripts/skill.sh omnijump python locolab/scripts/locomotion/play_planner.py \
+  --checkpoint <planner_checkpoint.pt>
+
+# 按训练的随机采样方式回放，并记录真实起跳而非只统计技能选择
+./scripts/skill.sh omnijump python locolab/scripts/locomotion/play_planner.py \
+  --checkpoint <planner_checkpoint.pt> --stochastic --follow-jumps
+
+# 单独测试底层 Jump：右侧手动切换 0/1，保持到下一次按键
+./scripts/skill.sh omnijump python locolab/scripts/locomotion/play_jump_switch.py --initial-flag 0
+```
+
+每次训练使用新的输出目录；`--resume <checkpoint>` 可恢复 Planner 网络与优化器，仿真环境重新初始化。`--verify` 会执行目标刷新、终止、模型载入及对应场景检查。日志、源码快照和中间 checkpoint 保留在本地 `logs/planner/`，不随 Git 推送，需要单独备份。
+
+**当前限制与验证边界：**
+
+- Planner 尚未完成成功验收。到达次数不是跨沟通过率，Jump 执行时间也不等于实际腾空时间；已观察到选中 Jump 却没有起跳的情况。
+- 纯 Gap 沟宽为 0.15–0.9 m、深度为 0.6–1.4 m；较宽沟可能超出当前冻结技能的稳定能力。
+- `--jump-always-active` 表示选中 Jump 期间输入开关恒为 1，并锁定 1.8 s；它与原始 GoalGrid 的 2.2 s 完整动作序列不同。默认旧接口也不等同于原始环境的触发条件。接口时序仍待对照验证。
+- 手动开关窗口绕过 Planner 和自动计时，速度、高度与落点描述在开关为 0 时仍提供给网络，不能将其直接当作完整技能执行流程。
+- 回放仅因跌落、倾斜或持续塌低/机身触地重置，不因到达、超时或跨地块重置。新增塌低检测晚于现有 Planner checkpoint 的训练，历史失败统计未包含此判定。
+- Periodic / Event Skill 的通用接口、内部 clock/phase、完成检测及相应底层重训是后续设计，**尚未实现完整 Event Skill 框架**。目前没有 BPO、部署 safety filter 或持续学习训练。
+
+成功实验才进入 [正式实验记录](docs/experiments/README.md)；上述 Planner 开发过程不视为成功复现。
+
 ## 代码结构
 
 - `locolab/scripts/locomotion/`：统一训练、回放和评估入口。
 - `locolab/source/locomotion/tasks/Go2W/`：各技能环境、指令和奖励配置。
 - `locolab/source/locomotion/mdp/`：奖励、观测、课程和指令实现。
-- `locolab/rsl_rl/`：共享 PPO、网络及训练运行器。
+- `locolab/rsl_rl/`：底层技能 PPO、网络及训练运行器。
+- `locolab/planner/`：OCC、冻结技能接口、导航网络、PPO 与跳跃诊断。
 - `deploy/policy/go2w/`：已发布的完整 checkpoint、ONNX/TorchScript 网络与来源参数（GoalGrid 模型尚待逐目标验收）。
 - `tests/`：回归测试与仿真检查。
 
@@ -77,5 +124,4 @@ Multiskill 和 HighPlatform 保留训练时腿部 23.5 Nm / 30 rad/s 限值；Ga
 
 ## Git
 
-本地整合分支：`barrierloco-unified`。保留上游 Git 历史，成功实验记录位于 `docs/experiments/`。
-开发时使用功能分支，不直接 push 到 main。
+当前统一代码维护在 `main`，保留上游 Git 历史。成功实验记录位于 `docs/experiments/`；日志、视频和未验收的 Planner 中间模型不纳入版本控制。

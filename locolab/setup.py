@@ -15,7 +15,7 @@ INSTALL_REQUIRES = [
 discovered_packages = find_packages(where=".")
 all_packages = ["locolab"]
 all_packages.extend(
-    f"locolab.{package}" if package == "source" or package.startswith("source.") else package
+    f"locolab.{package}" if package in ("source", "planner") or package.startswith(("source.", "planner.")) else package
     for package in discovered_packages
 )
 

@@ -13,6 +13,7 @@ parser.add_argument("--source-manifest", type=Path, help="Optional SHA-256 manif
 parser.add_argument("--checkpoint", type=Path, required=True)
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--video", action="store_true")
+parser.add_argument("--dynamics", choices=("native", "unified"), default="native")
 known, _ = parser.parse_known_args()
 checkpoint_path = known.checkpoint
 if checkpoint_path.is_dir():
@@ -69,6 +70,12 @@ try:
         raise RuntimeError("Results already exist; refusing to overwrite an evaluation")
     cfg = load_cfg_from_registry(TASK, "env_cfg_entry_point")
     agent_cfg = load_cfg_from_registry(TASK, "rsl_rl_cfg_entry_point")
+    if args.dynamics == "unified":
+        from copy import deepcopy
+
+        from locolab.source.locomotion.tasks.Go2W.planner_terrain_env_cfg import Go2WPlannerTerrainEnvCfg
+
+        cfg.scene.robot = deepcopy(Go2WPlannerTerrainEnvCfg().scene.robot)
     cfg.seed = 42
     cfg.scene.num_envs = COUNT
     cfg.sim.device = args.device
@@ -153,6 +160,7 @@ try:
         prim = stage.GetPrimAtPath(f"/World/envs/env_{index}/Robot/base")
         assert prim.GetAttribute("physxArticulation:enabledSelfCollisions").Get() is True
     report = {
+        "dynamics": args.dynamics,
         "checkpoint": str(args.checkpoint),
         "checkpoint_sha256": checkpoint_sha,
         "checkpoint_iteration": iteration,
@@ -195,6 +203,8 @@ try:
         args.output / "runtime_contract.json",
         {
             "step_dt": env.step_dt,
+            "effort_limits": robot.data.joint_effort_limits[0].tolist(),
+            "velocity_limits": robot.data.joint_vel_limits[0].tolist(),
             "joint_names": robot.data.joint_names,
             "wheel_names": wheel_names,
             "default_joint_pos": robot.data.default_joint_pos[0].tolist(),

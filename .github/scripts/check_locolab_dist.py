@@ -24,6 +24,11 @@ def check_bank_bytes(data: bytes) -> None:
     json.loads(gzip.decompress(data))
 
 
+PLANNER_MODULES = {
+    PurePosixPath("locolab/planner") / name
+    for name in ("__init__.py", "navigation.py", "network.py", "occupancy.py", "ppo.py", "skills.py", "jump_probe.py")
+}
+
 GO2W_USD_ROOT = PurePosixPath("locolab/source/locomotion/assets/Go2W/usd")
 M20_RESOURCES = {
     PurePosixPath("locolab/source/locomotion/assets/Go2W/urdf/go2w.urdf"),
@@ -53,7 +58,9 @@ def check_wheel(path: Path) -> None:
     """Assert that the wheel contains every runtime USD and jump reference."""
     with zipfile.ZipFile(path) as archive:
         members = {PurePosixPath(name) for name in archive.namelist()}
-        _require_paths(path, members, REQUIRED_USD_FILES | {JUMP_REFERENCE} | M20_RESOURCES | PARKOUR_REFERENCES)
+        _require_paths(
+            path, members, REQUIRED_USD_FILES | {JUMP_REFERENCE} | M20_RESOURCES | PARKOUR_REFERENCES | PLANNER_MODULES
+        )
 
         for reference in PARKOUR_REFERENCES:
             check_bank_bytes(archive.read(str(reference)))
@@ -76,7 +83,7 @@ def check_sdist(path: Path) -> None:
             for member in archive.getmembers()
             if len(PurePosixPath(member.name).parts) > 1
         }
-    sdist_resources.update(item.relative_to("locolab") for item in M20_RESOURCES | PARKOUR_REFERENCES)
+    sdist_resources.update(item.relative_to("locolab") for item in M20_RESOURCES | PARKOUR_REFERENCES | PLANNER_MODULES)
     _require_paths(path, members, sdist_resources)
 
 
@@ -93,10 +100,10 @@ def check_installed_resources() -> None:
     for item in PARKOUR_REFERENCES:
         check_bank_bytes((package_root / item.relative_to("locolab")).read_bytes())
 
-    for item in M20_RESOURCES:
+    for item in M20_RESOURCES | PLANNER_MODULES:
         resource = package_root / item.relative_to("locolab")
         if not resource.is_file() or resource.stat().st_size == 0:
-            raise RuntimeError(f"installed M20 resource is missing or empty: {resource}")
+            raise RuntimeError(f"installed runtime resource is missing or empty: {resource}")
 
     if not reference.is_file():
         raise RuntimeError(f"installed jump reference is missing: {reference}")
